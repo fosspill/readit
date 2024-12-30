@@ -453,6 +453,9 @@ async function loadTodaysGoals() {
                             </p>
                         </div>
                         <div class="goal-actions">
+                            <button onclick="updateProgress(${goal.id}, false)" class="progress-button decrement">
+                                <span class="button-text">-1</span>
+                            </button>
                             <button onclick="updateProgress(${goal.id}, true)" class="progress-button increment">
                                 <span class="button-text">+1</span>
                             </button>
@@ -1426,7 +1429,8 @@ async function updateProgress(goalId, increment = true) {
             body: JSON.stringify({
                 goal_id: goalId,
                 increment: increment,
-                reset: !increment // If we're not incrementing (i.e., undoing), do a full reset
+                decrement: !increment && !reset,
+                reset: !increment && reset
             })
         });
 
@@ -1434,12 +1438,18 @@ async function updateProgress(goalId, increment = true) {
         
         if (response.ok && data.success) {
             if (data.goalMet) {
-                // If the goal was met with this update, mark it as complete
                 await markGoalComplete(goalId);
             } else {
-                await loadTodaysGoals(); // Just refresh the display
+                await loadTodaysGoals();
             }
-            showToast(increment ? 'Progress updated!' : 'Progress reset');
+            
+            let message = 'Progress updated!';
+            if (reset) {
+                message = 'Progress reset';
+            } else if (!increment) {
+                message = 'Progress decreased';
+            }
+            showToast(message);
         } else {
             showToast(data.error || 'Failed to update progress');
         }

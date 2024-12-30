@@ -411,6 +411,7 @@ def update_progress():
         user_id = session.get('user_id')
         goal_id = request.json.get('goal_id')
         increment = request.json.get('increment', True)
+        decrement = request.json.get('decrement', False)
         reset = request.json.get('reset', False)
         today = date.today().isoformat()
         
