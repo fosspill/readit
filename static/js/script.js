@@ -196,24 +196,6 @@ async function handleLogin(event) {
     const password = document.getElementById('login-password').value;
     
     try {
-        console.log('Checking current auth status...'); // Debug log
-        // First check if we're already authenticated with the server
-        const authCheck = await fetch('/api/check-auth');
-        const authData = await authCheck.json();
-        
-        if (authData.authenticated) {
-            console.log('User already authenticated, proceeding...'); // Debug log
-            // Hide auth overlay and initialize
-            document.getElementById('auth-overlay').style.display = 'none';
-            await Promise.all([
-                loadTodaysGoals(),
-                updateReadingListSelect()
-            ]);
-            showSection('today-goals');
-            return;
-        }
-        
-        console.log('Attempting login...'); // Debug log
         const response = await fetch('/api/login', {
             method: 'POST',
             headers: {
@@ -223,44 +205,32 @@ async function handleLogin(event) {
         });
         
         const data = await response.json();
-        console.log('Login response:', data); // Debug log
         
         if (data.success) {
-            console.log('Login successful, setting user data...'); // Debug log
-            // Set auth data first
             localStorage.setItem('userId', data.user_id);
-            localStorage.setItem('username', username);
-            
-            console.log('Auth data set:', { 
-                userId: localStorage.getItem('userId'),
-                username: localStorage.getItem('username')
-            }); // Debug log
-            
-            // Show success message
-            showToast('Welcome back!');
-            
-            // Hide auth overlay
+            localStorage.setItem('username', data.username);
             document.getElementById('auth-overlay').style.display = 'none';
             
-            console.log('Initializing data...'); // Debug log
-            // Initialize all data after successful login
-            await Promise.all([
-                loadTodaysGoals(),
-                updateReadingListSelect()
-            ]);
-            
-            console.log('Data initialized, showing today section...'); // Debug log
-            // Show initial section (today)
-            showSection('today-goals');
+            // Initialize the app after successful login
+            await loadTodaysGoals();
+            startSessionRefresh();
+            showToast('Login successful');
         } else {
-            console.log('Login failed:', data.message); // Debug log
             showToast(data.message || 'Login failed');
         }
     } catch (error) {
         console.error('Login error:', error);
-        showToast('Login failed. Please try again.');
+        showToast('Login failed');
     }
 }
+
+// Make sure this event listener is added when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
+});
 
 // Handle registration with debug logging
 async function handleRegister(event) {
@@ -370,36 +340,36 @@ async function handlePasswordReset(event) {
     }
 }
 
-// Add this authentication check function
 function isAuthenticated() {
-    const userId = localStorage.getItem('userId');
-    const username = localStorage.getItem('username');
-    console.log('Checking auth status:', { userId, username }); // Debug log
-    return Boolean(userId);
+    return localStorage.getItem('userId') !== null;
 }
 
-// Add this to your main JavaScript file
 async function checkAuthStatus() {
     try {
         const response = await fetch('/api/check-auth');
         const data = await response.json();
         
         if (data.authenticated) {
-            // User is logged in, update UI accordingly
-            console.log('User is authenticated:', data.username);
-            // Update your UI here
-            return true;
+            localStorage.setItem('userId', data.user_id);
+            localStorage.setItem('username', data.username);
+            document.getElementById('auth-overlay').style.display = 'none';
+            await loadTodaysGoals();
+            startSessionRefresh();
         } else {
-            // User is not logged in
-            console.log('User is not authenticated');
-            // Update your UI here
-            return false;
+            localStorage.removeItem('userId');
+            localStorage.removeItem('username');
+            document.getElementById('auth-overlay').style.display = 'flex';
         }
     } catch (error) {
-        console.error('Error checking auth status:', error);
-        return false;
+        console.error('Auth check failed:', error);
+        document.getElementById('auth-overlay').style.display = 'flex';
     }
 }
+
+// Update the page load handler
+document.addEventListener('DOMContentLoaded', async () => {
+    await checkAuthStatus();
+});
 
 // Check auth status when page loads
 document.addEventListener('DOMContentLoaded', () => {
@@ -1605,7 +1575,7 @@ async function loadClubs() {
                                 <p class="readers-count">${club.readers_count} currently reading</p>
                                 ${!club.current_book.in_my_list ? `
                                     <button onclick="addToReadingList('${club.current_book.isbn}')" class="action-button small">
-                                        <span class="icon">����</span> Add to My List
+                                        <span class="icon"></span> Add to My List
                                     </button>
                                 ` : ''}
                             </div>
@@ -2222,4 +2192,5 @@ async function loadDailyGoals() {
         showToast('Failed to load daily goals');
     }
 }
+
 

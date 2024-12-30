@@ -739,7 +739,7 @@ def login():
     return jsonify({
         "success": False,
         "message": message
-    })
+    }), 401  # Added 401 status code for failed login
 
 @app.route('/api/verify-reset', methods=['POST'])
 def verify_reset():
