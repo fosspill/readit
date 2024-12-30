@@ -1,0 +1,28 @@
+# ReadIt
+
+Mobile reading tracker app built with Python, Flask, and SQLite.
+
+### Features:
+- Define reading goals and track progress
+- Daily checkbox to mark completed readings
+- View personal reading streak vs friends
+- Search books using open book API
+- Modern mobile-friendly interface
+
+### Tech Stack:
+- Backend: Python, Flask, SQLite
+- Frontend: HTML/CSS, JavaScript
+- APIs: Open book API
+
+### Setup:
+1. Clone repo
+2. Install dependencies
+3. Run Flask server
+
+### Contributing:
+- Fork repo
+- Submit pull requests
+- Report issues
+
+### License:
+GNU General Public License v3.0
