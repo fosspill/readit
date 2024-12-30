@@ -12,7 +12,7 @@ Mobile reading tracker app built with Python, Flask, and SQLite.
 ### Tech Stack:
 - Backend: Python, Flask, SQLite
 - Frontend: HTML/CSS, JavaScript
-- APIs: Open book API
+- APIs: Google Books API through isbnlib
 
 ### Setup:
 1. Clone repo
