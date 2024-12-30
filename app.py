@@ -1107,7 +1107,7 @@ def get_friends():
             )
             SELECT 
                 u.id,
-                u.username_hash,
+                u.friend_code,
                 COALESCE(fs.streak, 0) as streak
             FROM friendships f
             JOIN users u ON f.user_id2 = u.id
@@ -1119,7 +1119,7 @@ def get_friends():
         for row in c.fetchall():
             friends.append({
                 'id': row[0],
-                'username': 'Friend',  # We'll need to implement a way to safely show usernames
+                'username': row[1],
                 'streak': row[2]
             })
         
