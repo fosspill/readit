@@ -1,7 +1,9 @@
 export const profile = {
     async loadProfile() {
         try {
-            const response = await fetch('/api/get-profile');
+            const response = await fetch('/api/get-profile', {
+                credentials: 'include'
+            });
             const data = await response.json();
             
             this.renderGoals(data.goals);
@@ -85,6 +87,7 @@ export const profile = {
             const response = await fetch('/api/mark-book-read', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ 
                     isbn,
                     is_read: markAsRead
@@ -109,6 +112,7 @@ export const profile = {
             const response = await fetch('/api/archive-goal', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ 
                     goal_id: goalId,
                     archive: archive
@@ -132,6 +136,7 @@ export const profile = {
             const response = await fetch('/api/delete-goal', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ goal_id: goalId })
             });
             
@@ -150,6 +155,7 @@ export const profile = {
             const response = await fetch('/api/delete-book', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ isbn })
             });
             

@@ -31,7 +31,10 @@ export function initializeNavigation() {
         link.addEventListener('click', async (e) => {
             e.preventDefault();
             const isAuthenticated = await auth.checkAuthentication();
-            if (!isAuthenticated) return;
+            if (!isAuthenticated) {
+                ui.toggleModal('auth-overlay', true);
+                return;
+            }
             
             const sectionId = link.getAttribute('href').substring(1);
             console.log('Navigating to section:', sectionId);
@@ -62,10 +65,21 @@ export async function initializeApp() {
     try {
         console.log('Initializing app...'); // Debug log
         
+        // Check authentication first
+        const isAuthenticated = await auth.checkAuthentication();
+        if (!isAuthenticated) {
+            console.log('Not authenticated, showing auth overlay');
+            ui.toggleModal('auth-overlay', true);
+            return false;
+        }
+
         // Initialize sections
         document.querySelectorAll('.section').forEach(section => {
             section.style.display = 'none';
         });
+
+        // Initialize navigation
+        initializeNavigation();
 
         // Load initial data for the first visible section only
         await goals.loadTodayGoals();
@@ -74,9 +88,11 @@ export async function initializeApp() {
         
         // Show the initial section
         ui.showSection('today-goals');
+        return true;
     } catch (error) {
         console.error('Failed to initialize app:', error);
         ui.showError('Failed to load some components');
+        return false;
     }
 }
 
@@ -115,29 +131,37 @@ export function attachEventListeners() {
     });
 }
 
+// Initialize the app when the page loads
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('DOM Content Loaded, checking session...');
+    
     // Attach auth form listeners first
-    document.getElementById('login-form-element')?.addEventListener('submit', (e) => {
+    document.getElementById('login-form-element')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        auth.handleLogin(e);
+        const success = await auth.handleLogin(e);
+        if (success) {
+            console.log('Login successful, initializing app...');
+            await initializeApp();
+            attachEventListeners();
+        }
         return false;
     });
     
-    document.getElementById('register-form-element')?.addEventListener('submit', (e) => {
+    document.getElementById('register-form-element')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        auth.handleRegister(e);
+        const success = await auth.handleRegister(e);
+        if (success) {
+            console.log('Registration successful, initializing app...');
+            await initializeApp();
+            attachEventListeners();
+        }
         return false;
     });
 
-    // Check authentication and initialize app if logged in
-    const isAuthenticated = await auth.checkAuthentication();
-    if (!isAuthenticated) {
-        ui.toggleModal('auth-overlay', true);
-        return;
+    // Try to initialize the app (will check authentication)
+    const initialized = await initializeApp();
+    if (initialized) {
+        attachEventListeners();
     }
-
-    initializeNavigation();
-    await initializeApp();
-    attachEventListeners();
 });
 

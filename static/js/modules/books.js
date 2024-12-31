@@ -22,6 +22,7 @@ export const books = {
             const response = await fetch('/api/search-books', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ query })
             });
             
@@ -74,6 +75,7 @@ export const books = {
             const response = await fetch('/api/add-to-reading-list', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ 
                     book_isbn: isbn,
                     book_title: book?.title,
@@ -103,7 +105,9 @@ export const books = {
 
     async updateReadingListSelect(selectedIsbn = null) {
         try {
-            const response = await fetch('/api/get-reading-list');
+            const response = await fetch('/api/get-reading-list', {
+                credentials: 'include'
+            });
             const data = await response.json();
             console.log('Books response:', data);
             
@@ -130,7 +134,9 @@ export const books = {
 
     async getBookDetails(bookId) {
         try {
-            const response = await fetch(`/api/books/${bookId}`);
+            const response = await fetch(`/api/books/${bookId}`, {
+                credentials: 'include'
+            });
             return await response.json();
         } catch (error) {
             console.error('Failed to get book details:', error);
@@ -163,6 +169,7 @@ export const books = {
             const response = await fetch('/api/set-reading-goal', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify(goalData)
             });
             

@@ -4,21 +4,25 @@ import { initializeNavigation, initializeApp, attachEventListeners } from '../sc
 export const auth = {
     async checkAuthentication() {
         try {
+            console.log('Checking authentication status...');
             const response = await fetch('/api/check-auth', {
                 credentials: 'include'
             });
             const data = await response.json();
             
+            console.log('Auth check response:', data);
+            
             if (data.authenticated) {
                 document.getElementById('auth-overlay').style.display = 'none';
-                initializeNavigation();
-                await initializeApp();
-                attachEventListeners();
                 return true;
             }
+            
+            // If not authenticated, ensure auth overlay is visible
+            document.getElementById('auth-overlay').style.display = 'flex';
             return false;
         } catch (error) {
             console.error('Auth check failed:', error);
+            document.getElementById('auth-overlay').style.display = 'flex';
             return false;
         }
     },
@@ -39,9 +43,7 @@ export const auth = {
             const data = await response.json();
             if (response.ok) {
                 document.getElementById('auth-overlay').style.display = 'none';
-                initializeNavigation();
-                await initializeApp();
-                attachEventListeners();
+                return true;
             } else {
                 throw new Error(data.message);
             }
@@ -49,6 +51,7 @@ export const auth = {
             console.error('Login failed:', error);
             document.getElementById('login-error').textContent = 
                 error.message || 'Login failed. Please try again.';
+            return false;
         }
     },
 
@@ -60,24 +63,21 @@ export const auth = {
 
         if (password !== confirmPassword) {
             document.getElementById('register-error').textContent = 'Passwords do not match';
-            return;
+            return false;
         }
 
         try {
             const response = await fetch('/api/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ username, password })
             });
 
             const data = await response.json();
             if (response.ok) {
-                localStorage.setItem('userId', data.userId);
-                localStorage.setItem('username', username);
                 document.getElementById('auth-overlay').style.display = 'none';
-                initializeNavigation();
-                await initializeApp();
-                attachEventListeners();
+                return true;
             } else {
                 throw new Error(data.message);
             }
@@ -85,6 +85,7 @@ export const auth = {
             console.error('Registration failed:', error);
             document.getElementById('register-error').textContent = 
                 error.message || 'Registration failed. Please try again.';
+            return false;
         }
     },
 
@@ -238,8 +239,3 @@ export const auth = {
         }
     }
 }; 
-
-// Check authentication status when the page loads
-document.addEventListener('DOMContentLoaded', () => {
-    auth.checkAuthentication();
-}); 

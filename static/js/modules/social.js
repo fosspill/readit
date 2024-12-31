@@ -4,7 +4,9 @@ import { ui } from './ui.js';
 export const social = {
     async loadClubs() {
         try {
-            const response = await fetch('/api/get-clubs');
+            const response = await fetch('/api/get-clubs', {
+                credentials: 'include'
+            });
             const data = await response.json();
             console.log('Clubs response:', data); // Debug log
             
@@ -45,7 +47,8 @@ export const social = {
             const endpoint = club.isMember ? 'leave' : 'join';
             const response = await fetch(`/api/clubs/${club.id}/${endpoint}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
             });
 
             if (!response.ok) throw new Error(`Failed to ${endpoint} club`);
@@ -66,6 +69,7 @@ export const social = {
             const response = await fetch('/api/clubs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({
                     name: form.querySelector('#club-name').value,
                     description: form.querySelector('#club-description').value,
@@ -87,7 +91,9 @@ export const social = {
 
     async loadFriends() {
         try {
-            const response = await fetch('/api/get-friends');
+            const response = await fetch('/api/get-friends', {
+                credentials: 'include'
+            });
             const data = await response.json();
             console.log('Friends response:', data); // Debug log
             
@@ -135,7 +141,8 @@ export const social = {
         try {
             const response = await fetch('/api/update-friend-code', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
             });
 
             const data = await response.json();
