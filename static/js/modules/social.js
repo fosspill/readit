@@ -1,10 +1,14 @@
+import { ui } from './ui.js';
+
 // Social features (clubs, friends) related functions
 export const social = {
     async loadClubs() {
         try {
-            const response = await fetch('/api/clubs');
-            const clubs = await response.json();
+            const response = await fetch('/api/get-clubs');
+            const data = await response.json();
+            console.log('Clubs response:', data); // Debug log
             
+            const clubs = Array.isArray(data) ? data : [];
             const clubsContainer = document.getElementById('book-clubs');
             clubsContainer.innerHTML = clubs.length ? '' : '<p>No book clubs found</p>';
             
@@ -83,9 +87,11 @@ export const social = {
 
     async loadFriends() {
         try {
-            const response = await fetch('/api/friends');
-            const friends = await response.json();
+            const response = await fetch('/api/get-friends');
+            const data = await response.json();
+            console.log('Friends response:', data); // Debug log
             
+            const friends = Array.isArray(data) ? data : [];
             const friendsContainer = document.getElementById('friends-list');
             friendsContainer.innerHTML = friends.length ? '' : '<p>No friends added yet</p>';
             
@@ -111,5 +117,37 @@ export const social = {
             </div>
         `;
         return div;
+    },
+
+    showJoinClubModal() {
+        ui.toggleModal('join-club-modal', true);
+    },
+
+    showCreateClubModal() {
+        ui.toggleModal('create-club-modal', true);
+    },
+
+    showAddFriendModal() {
+        ui.toggleModal('add-friend-modal', true);
+    },
+
+    async updateFriendCode() {
+        try {
+            const response = await fetch('/api/update-friend-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                ui.showSuccess('Friend code updated successfully');
+                await this.loadFriends(); // Refresh the friends list
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (error) {
+            console.error('Friend code update failed:', error);
+            ui.showError(error.message || 'Failed to update friend code');
+        }
     }
 }; 

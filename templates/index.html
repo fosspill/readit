@@ -13,25 +13,26 @@
             <div id="login-form" class="auth-form">
                 <h2>Welcome Back!</h2>
                 <p class="auth-subtitle">Time to continue your reading journey...</p>
-                <form onsubmit="handleLogin(event)">
+                <form id="login-form-element">
                     <div class="form-group">
                         <input type="text" id="login-username" placeholder="Username" required>
                     </div>
                     <div class="form-group">
                         <input type="password" id="login-password" placeholder="Password" required>
                     </div>
+                    <div id="login-error" class="error-message"></div>
                     <button type="submit" class="auth-button">Login</button>
                 </form>
                 <p class="auth-links">
-                    <a href="#" onclick="showPasswordReset()">Forgot Password?</a>
-                    <a href="#" onclick="showRegister()">New Reader? Register</a>
+                    <a href="#" onclick="auth.showPasswordReset()">Forgot Password?</a>
+                    <a href="#" onclick="auth.showRegister()">New Reader? Register</a>
                 </p>
             </div>
 
             <div id="register-form" class="auth-form hidden">
                 <h2>Join the Library</h2>
                 <p class="auth-subtitle">Start your reading adventure...</p>
-                <form onsubmit="handleRegister(event)">
+                <form id="register-form-element">
                     <div class="form-group">
                         <input type="text" id="register-username" placeholder="Choose a Username" required>
                     </div>
@@ -41,17 +42,18 @@
                     <div class="form-group">
                         <input type="password" id="register-confirm-password" placeholder="Confirm Password" required>
                     </div>
+                    <div id="register-error" class="error-message"></div>
                     <button type="submit" class="auth-button">Register</button>
                 </form>
                 <p class="auth-links">
-                    <a href="#" onclick="showLogin()">Already have an account? Login</a>
+                    <a href="#" onclick="auth.showLogin()">Already have an account? Login</a>
                 </p>
             </div>
 
             <div id="reset-form" class="auth-form hidden">
                 <h2>Password Reset</h2>
                 <p class="auth-subtitle">Let's get you back to reading...</p>
-                <form onsubmit="handlePasswordReset(event)">
+                <form onsubmit="auth.handlePasswordReset(event)">
                     <div class="form-group">
                         <input type="text" id="reset-username" placeholder="Your Username" required>
                     </div>
@@ -69,7 +71,7 @@
                     <button type="submit" class="auth-button">Reset Password</button>
                 </form>
                 <p class="auth-links">
-                    <a href="#" onclick="showLogin()">Back to Login</a>
+                    <a href="#" onclick="auth.showLogin()">Back to Login</a>
                 </p>
             </div>
         </div>
@@ -97,7 +99,7 @@
                 </div>
                 <div class="daily-progress">
                     <h3>Today's Reading Goals</h3>
-                    <div id="book-goals-list"></div>
+                    <div id="today-goals-list"></div>
                 </div>
                 <div class="completed-goals">
                     <div id="completed-goals-list"></div>
@@ -106,15 +108,17 @@
 
             <div id="add-goals" class="section">
                 <h2>Add New Goals</h2>
-                <form id="book-search-form" class="search-form">
-                    <input type="text" id="book-search" placeholder="Search for books...">
-                    <button type="submit">Search</button>
+                <form id="book-search-form" onsubmit="event.preventDefault(); books.searchBooks(document.getElementById('book-search').value)">
+                    <div class="search-container">
+                        <input type="text" id="book-search" placeholder="Search by title or author...">
+                        <button type="submit" id="search-button" data-original-text="Search">Search</button>
+                    </div>
                 </form>
                 <div id="search-results" class="results-container"></div>
-                <form id="set-goal-form" class="goal-form">
+                <form id="set-goal-form" class="goal-form" onsubmit="books.createGoal(event)">
                     <div class="form-group">
-                        <label for="selected-book">Select Book</label>
-                        <select id="selected-book" required>
+                        <label for="book-select">Book</label>
+                        <select id="book-select" required>
                             <option value="">Select a book from your reading list...</option>
                         </select>
                     </div>
@@ -147,7 +151,7 @@
                     </div>
                     <div class="nickname-editor">
                         <input type="text" id="my-friend-code" placeholder="Enter your nickname" maxlength="15">
-                        <button onclick="updateFriendCode()" class="action-button small">
+                        <button onclick="social.updateFriendCode()" class="action-button small">
                             <span class="icon">💾</span> Save
                         </button>
                     </div>
@@ -159,26 +163,26 @@
                     <div class="section-header">
                         <h3>Your Reading Clubs</h3>
                         <div class="action-buttons">
-                            <button onclick="showJoinClubModal()" class="action-button small">
+                            <button class="action-button small" onclick="social.showJoinClubModal()">
                                 <span class="icon">🔗</span> Join
                             </button>
-                            <button onclick="showCreateClubModal()" class="action-button small">
+                            <button class="action-button small" onclick="social.showCreateClubModal()">
                                 <span class="icon">➕</span> Create
                             </button>
                         </div>
                     </div>
-                    <div id="clubs-list" class="social-grid">
-                        <!-- Clubs will be populated here -->
-                    </div>
+                    <div id="book-clubs"></div>
                 </div>
 
                 <!-- Friends List Section -->
                 <div class="social-section">
                     <div class="section-header">
                         <h3>Reading Friends</h3>
-                        <button onclick="showAddFriendModal()" class="action-button small">
-                            <span class="icon">👥</span> Add Friend
-                        </button>
+                        <div class="action-buttons">
+                            <button class="action-button small" onclick="social.showAddFriendModal()">
+                                <span class="icon">👥</span> Add Friend
+                            </button>
+                        </div>
                     </div>
                     <div id="friends-list" class="social-grid">
                         <!-- Friends will be populated here -->
@@ -195,20 +199,20 @@
                         <div class="form-group">
                             <label for="profile-username">Change Username</label>
                             <input type="text" id="profile-username" placeholder="New username">
-                            <button type="button" onclick="updateUsername()" class="action-button">Update Username</button>
+                            <button type="button" onclick="auth.updateUsername()" class="action-button">Update Username</button>
                         </div>
                         
                         <div class="form-group">
                             <label for="profile-password">Change Password</label>
                             <input type="password" id="profile-password" placeholder="New password">
                             <input type="password" id="profile-confirm-password" placeholder="Confirm new password">
-                            <button type="button" onclick="updatePassword()" class="action-button">Update Password</button>
+                            <button type="button" onclick="auth.updatePassword()" class="action-button">Update Password</button>
                         </div>
                         
                         <div class="form-group danger-zone">
                             <label>Account Actions</label>
-                            <button type="button" onclick="handleLogout()" class="action-button">Log Out</button>
-                            <button type="button" onclick="deleteAccount()" class="action-button danger">Delete Account</button>
+                            <button type="button" onclick="auth.handleLogout()" id="logout-button">Log Out</button>
+                            <button type="button" onclick="auth.deleteAccount()" class="action-button danger">Delete Account</button>
                         </div>
                     </form>
                 </div>
@@ -236,7 +240,7 @@
                 <form id="join-club-form" class="modal-form">
                     <input type="text" id="club-code" placeholder="Enter Club Code" required>
                     <div class="modal-buttons">
-                        <button type="button" onclick="hideModals()" class="action-button secondary">Cancel</button>
+                        <button type="button" onclick="ui.hideModals()" class="action-button secondary">Cancel</button>
                         <button type="submit" class="action-button">Join Club</button>
                     </div>
                 </form>
@@ -250,7 +254,7 @@
                 <form id="create-club-form" class="modal-form">
                     <input type="text" id="club-name" placeholder="Club Name" required>
                     <div class="modal-buttons">
-                        <button type="button" onclick="hideModals()" class="action-button secondary">Cancel</button>
+                        <button type="button" onclick="ui.hideModals()" class="action-button secondary">Cancel</button>
                         <button type="submit" class="action-button">Create Club</button>
                     </div>
                 </form>
@@ -264,7 +268,7 @@
                 <form id="add-friend-form" class="modal-form">
                     <input type="text" id="friend-code" placeholder="Enter Friend Code" required>
                     <div class="modal-buttons">
-                        <button type="button" onclick="hideModals()" class="action-button secondary">Cancel</button>
+                        <button type="button" onclick="ui.hideModals()" class="action-button secondary">Cancel</button>
                         <button type="submit" class="action-button">Add Friend</button>
                     </div>
                 </form>
@@ -281,7 +285,7 @@
                         <option value="">Select a book from your reading list</option>
                     </select>
                     <div class="modal-buttons">
-                        <button type="button" onclick="hideModals()" class="action-button secondary">Cancel</button>
+                        <button type="button" onclick="ui.hideModals()" class="action-button secondary">Cancel</button>
                         <button type="submit" class="action-button">Set Book</button>
                     </div>
                 </form>
@@ -308,6 +312,6 @@
         </nav>
     </div>
 
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>

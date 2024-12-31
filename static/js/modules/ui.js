@@ -35,11 +35,20 @@ export const ui = {
     },
 
     showSection(sectionId) {
+        // First hide all sections
         document.querySelectorAll('.section').forEach(section => {
             section.style.display = 'none';
+            section.classList.remove('active');
         });
-        document.getElementById(sectionId).style.display = 'block';
+
+        // Show the requested section
+        const targetSection = document.getElementById(sectionId);
+        if (targetSection) {
+            targetSection.style.display = 'block';
+            targetSection.classList.add('active');
+        }
         
+        // Update navigation
         document.querySelectorAll('.nav-item').forEach(item => {
             item.classList.remove('active');
         });
@@ -60,5 +69,11 @@ export const ui = {
         element.innerHTML = isLoading ? 
             '<span class="spinner"></span>' : 
             element.getAttribute('data-original-text') || element.innerHTML;
+    },
+
+    hideModals() {
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.style.display = 'none';
+        });
     }
 }; 

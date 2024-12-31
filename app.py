@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify
-from db_utils import init_db, add_user, save_reading_goal, update_daily_progress, get_streak_and_friends, get_reading_list, add_book_to_reading_list, get_reading_goals, verify_database, add_book_details
+from db_utils import init_db, add_user, save_reading_goal, update_daily_progress, get_streak_and_friends, get_reading_list, add_book_to_reading_list, get_reading_goals, verify_database, add_book_details, mark_book_read
 from datetime import date, timedelta, datetime
 import sqlite3
 import isbnlib
@@ -72,8 +72,7 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            return jsonify({"error": "Unauthorized"}), 401
-        refresh_session()  # Refresh session on each authenticated request
+            return jsonify({"error": "Not authenticated"}), 401
         return f(*args, **kwargs)
     return decorated_function
 
@@ -132,11 +131,11 @@ def search_books():
 @app.route('/api/add-to-reading-list', methods=['POST'])
 @login_required
 def add_to_reading_list():
-    data = request.json
-    print("Received data:", data)
-    
     try:
-        user_id = data['user_id']
+        data = request.json
+        print("Received data:", data)  # Debug log
+        
+        user_id = session.get('user_id')
         book_isbn = data['book_isbn']
         
         # If title and author weren't provided, get them from isbnlib
@@ -150,6 +149,8 @@ def add_to_reading_list():
         else:
             book_title = data['book_title']
             book_author = data['book_author']
+        
+        print(f"Adding book: {book_title} by {book_author}")  # Debug log
         
         # Add book details and to reading list
         add_book_details(book_isbn, book_title, book_author)
@@ -408,144 +409,127 @@ def set_reading_goal():
 @login_required
 def update_progress():
     try:
-        user_id = session.get('user_id')
-        goal_id = request.json.get('goal_id')
-        increment = request.json.get('increment', True)
-        decrement = request.json.get('decrement', False)
-        reset = request.json.get('reset', False)
-        today = date.today().isoformat()
+        data = request.json
+        goal_id = data['goal_id']
+        increment = data['increment']
+        set_absolute = data.get('set_absolute', False)
         
         conn = sqlite3.connect('readit.db')
         c = conn.cursor()
         
-        try:
-            # Get goal details
-            c.execute("""
-                SELECT goal_quantity 
-                FROM reading_goals 
-                WHERE id = ? AND user_id = ? AND archived = 0
-            """, (goal_id, user_id))
+        today = date.today().isoformat()
+        
+        # Get current progress and goal details
+        c.execute("""
+            SELECT COALESCE(drg.daily_progress, 0), rg.goal_quantity 
+            FROM reading_goals rg
+            LEFT JOIN daily_reading_goals drg 
+                ON drg.reading_goal_id = rg.id AND drg.date = ?
+            WHERE rg.id = ?
+        """, (today, goal_id))
+        
+        result = c.fetchone()
+        if not result:
+            return jsonify({"error": "Goal not found"}), 404
             
-            goal_row = c.fetchone()
-            if not goal_row:
-                return jsonify({"error": "Goal not found"}), 404
+        current_progress, goal_quantity = result
+        
+        # Calculate new progress
+        if set_absolute:
+            new_progress = increment
+        else:
+            new_progress = max(0, current_progress + (1 if increment else -1))
             
-            goal_quantity = goal_row[0]
-                
-            # Get or create today's progress
-            c.execute("""
-                INSERT OR IGNORE INTO daily_reading_goals 
-                (reading_goal_id, date, daily_progress, completed)
-                VALUES (?, ?, 0, 0)
-            """, (goal_id, today))
-            
-            # Update progress
-            if reset:
-                # Complete reset of progress and completion status
-                c.execute("""
-                    UPDATE daily_reading_goals 
-                    SET daily_progress = 0,
-                        completed = 0
-                    WHERE reading_goal_id = ? AND date = ?
-                """, (goal_id, today))
-            elif increment:
-                c.execute("""
-                    UPDATE daily_reading_goals 
-                    SET daily_progress = daily_progress + 1
-                    WHERE reading_goal_id = ? AND date = ?
-                """, (goal_id, today))
-            else:
-                c.execute("""
-                    UPDATE daily_reading_goals 
-                    SET daily_progress = MAX(0, daily_progress - 1),
-                        completed = 0
-                    WHERE reading_goal_id = ? AND date = ?
-                """, (goal_id, today))
-            
-            # Check if goal is met
-            c.execute("""
-                SELECT daily_progress 
-                FROM daily_reading_goals 
-                WHERE reading_goal_id = ? AND date = ?
-            """, (goal_id, today))
-            
-            current_progress = c.fetchone()[0]
-            goal_met = current_progress >= goal_quantity
-            
-            # If goal is met, mark it as completed
-            if goal_met:
-                c.execute("""
-                    UPDATE daily_reading_goals 
-                    SET completed = 1
-                    WHERE reading_goal_id = ? AND date = ?
-                """, (goal_id, today))
-            
-            conn.commit()
-            return jsonify({
-                "success": True,
-                "goalMet": goal_met
-            })
-            
-        except sqlite3.Error as e:
-            print(f"Database error: {e}")
-            return jsonify({"error": "Database error"}), 500
-            
+        # Check if we need to update completion status
+        goal_met = new_progress >= goal_quantity
+        
+        # Update or insert progress
+        c.execute("""
+            INSERT INTO daily_reading_goals (reading_goal_id, date, daily_progress, completed)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(reading_goal_id, date) 
+            DO UPDATE SET 
+                daily_progress = ?,
+                completed = ?
+        """, (goal_id, today, new_progress, goal_met, new_progress, goal_met))
+        
+        conn.commit()
+        
+        return jsonify({
+            "success": True,
+            "goalMet": goal_met,
+            "progress": new_progress
+        })
+        
     except Exception as e:
-        print(f"Error updating progress: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
-        conn.close()
+        if 'conn' in locals():
+            conn.close()
 
 @app.route('/api/complete-daily-goal', methods=['POST'])
 @login_required
 def complete_daily_goal():
     try:
-        user_id = session.get('user_id')
-        goal_id = request.json.get('goal_id')
-        today = date.today().isoformat()
-        
-        if not all([user_id, goal_id]):
-            return jsonify({"error": "Missing required fields"}), 400
+        data = request.json
+        goal_id = data['goal_id']
+        completed = data.get('completed', True)
         
         conn = sqlite3.connect('readit.db')
         c = conn.cursor()
         
-        try:
-            # Verify goal belongs to user
-            c.execute("""
-                SELECT 1 FROM reading_goals 
-                WHERE id = ? AND user_id = ? AND archived = 0
-            """, (goal_id, user_id))
+        today = date.today().isoformat()
+        
+        print(f"Completing goal {goal_id} for date {today}, completed={completed}")  # Debug log
+        
+        # Get goal quantity
+        c.execute("SELECT goal_quantity FROM reading_goals WHERE id = ?", (goal_id,))
+        result = c.fetchone()
+        if not result:
+            print(f"Goal {goal_id} not found")  # Debug log
+            return jsonify({"error": "Goal not found"}), 404
             
-            if not c.fetchone():
-                return jsonify({"error": "Goal not found"}), 404
-                
-            # Get or create today's progress
-            c.execute("""
-                INSERT OR IGNORE INTO daily_reading_goals 
-                (reading_goal_id, date, daily_progress, completed)
-                VALUES (?, ?, 0, 0)
-            """, (goal_id, today))
-            
-            # Mark as completed
-            c.execute("""
-                UPDATE daily_reading_goals 
-                SET completed = 1
-                WHERE reading_goal_id = ? AND date = ?
-            """, (goal_id, today))
-            
-            conn.commit()
-            return jsonify({"success": True})
-            
-        except sqlite3.Error as e:
-            print(f"Database error: {e}")
-            return jsonify({"error": "Database error"}), 500
-            
+        goal_quantity = result[0]
+        print(f"Goal quantity: {goal_quantity}")  # Debug log
+        
+        # Check if we already have a record for today
+        c.execute("""
+            SELECT daily_progress, completed 
+            FROM daily_reading_goals 
+            WHERE reading_goal_id = ? AND date = ?
+        """, (goal_id, today))
+        existing = c.fetchone()
+        print(f"Existing record: {existing}")  # Debug log
+        
+        # Update or insert the daily goal with max progress and completed status
+        c.execute("""
+            INSERT INTO daily_reading_goals (reading_goal_id, date, daily_progress, completed)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(reading_goal_id, date) 
+            DO UPDATE SET 
+                daily_progress = ?,
+                completed = ?
+        """, (goal_id, today, goal_quantity, completed, goal_quantity, completed))
+        
+        conn.commit()
+        
+        # Verify the update
+        c.execute("""
+            SELECT daily_progress, completed 
+            FROM daily_reading_goals 
+            WHERE reading_goal_id = ? AND date = ?
+        """, (goal_id, today))
+        new_record = c.fetchone()
+        print(f"New record: {new_record}")  # Debug log
+        
+        return jsonify({"success": True})
+        
     except Exception as e:
-        print(f"Error completing goal: {e}")
+        print(f"Error completing daily goal: {e}")  # Debug log
         return jsonify({"error": str(e)}), 500
     finally:
-        conn.close()
+        if 'conn' in locals():
+            conn.close()
 
 @app.route('/api/archive-goal', methods=['POST'])
 @login_required
@@ -620,36 +604,25 @@ def delete_goal():
 
 @app.route('/api/mark-book-read', methods=['POST'])
 @login_required
-def mark_book_read():
+def handle_mark_book_read():
     try:
         user_id = session.get('user_id')
-        isbn = request.json.get('isbn')
+        data = request.json
+        isbn = data.get('isbn')
+        is_read = data.get('is_read', True)  # Default to marking as read
         
-        conn = sqlite3.connect('readit.db')
-        c = conn.cursor()
+        print(f"Marking book {isbn} as {'read' if is_read else 'unread'} for user {user_id}")  # Debug log
+            
+        success = mark_book_read(user_id, isbn, is_read)
         
-        # Get all goals for this book
-        c.execute("""
-            SELECT id FROM reading_goals 
-            WHERE user_id = ? AND book_isbn = ?
-        """, (user_id, isbn))
-        
-        goal_ids = [row[0] for row in c.fetchall()]
-        
-        # Mark all goals as completed
-        for goal_id in goal_ids:
-            c.execute("""
-                UPDATE reading_goals 
-                SET completed = 1 
-                WHERE id = ?
-            """, (goal_id,))
-        
-        conn.commit()
-        return jsonify({"success": True})
+        if success:
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": "Failed to update book status"}), 500
+            
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-    finally:
-        conn.close()
+        print(f"Error marking book as read: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/delete-book', methods=['POST'])
 @login_required
@@ -695,51 +668,64 @@ def delete_book():
     finally:
         conn.close()
 
-@app.route('/api/register', methods=['POST'])
-def register():
-    data = request.json
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-
-    username = data.get('username')
-    password = data.get('password')
-
-    if not username or not password:
-        return jsonify({"error": "Username and password required"}), 400
-
-    success, message = auth_manager.register_user(username, password)
-    return jsonify({"success": success, "message": message})
-
 @app.route('/api/login', methods=['POST'])
 def login():
-    data = request.json
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-
-    username = data.get('username')
-    password = data.get('password')
-
-    if not username or not password:
-        return jsonify({"error": "Username and password required"}), 400
-
-    success, message, user_id = auth_manager.verify_login(username, password)
-    if success:
-        session.permanent = True
-        session['user_id'] = user_id
-        session['username'] = username
-        session['logged_in_at'] = datetime.now().isoformat()
+    try:
+        data = request.json
+        username = data.get('username')
+        password = data.get('password')
         
-        return jsonify({
-            "success": True,
-            "message": "Login successful",
-            "user_id": user_id,
-            "username": username
-        })
-    
-    return jsonify({
-        "success": False,
-        "message": message
-    }), 401  # Added 401 status code for failed login
+        if not username or not password:
+            return jsonify({"error": "Username and password are required"}), 400
+
+        success, message, user_id = auth_manager.verify_login(username, password)
+        
+        if success:
+            session['user_id'] = user_id
+            session['logged_in_at'] = datetime.now().isoformat()
+            return jsonify({
+                "message": "Login successful",
+                "userId": user_id
+            })
+        else:
+            return jsonify({"error": message}), 401
+
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        return jsonify({"error": "Login failed"}), 500
+
+@app.route('/api/register', methods=['POST'])
+def register():
+    try:
+        data = request.json
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            return jsonify({"error": "Username and password are required"}), 400
+
+        success, message = auth_manager.register_user(username, password)
+        
+        if success:
+            # Log the user in after successful registration
+            _, _, user_id = auth_manager.verify_login(username, password)
+            session['user_id'] = user_id
+            session['logged_in_at'] = datetime.now().isoformat()
+            return jsonify({
+                "message": "Registration successful",
+                "userId": user_id
+            })
+        else:
+            return jsonify({"error": message}), 400
+
+    except Exception as e:
+        print(f"Registration error: {str(e)}")
+        return jsonify({"error": "Registration failed"}), 500
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({"message": "Logout successful"})
 
 @app.route('/api/verify-reset', methods=['POST'])
 def verify_reset():
@@ -771,26 +757,13 @@ def reset_password():
     success, message = auth_manager.reset_password(username, new_password)
     return jsonify({"success": success, "message": message})
 
-# Add a logout route to properly clear the session
-@app.route('/api/logout', methods=['POST'])
-def logout():
-    try:
-        session.clear()
-        return jsonify({"success": True, "message": "Logged out successfully"})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
 
 # Add a route to check authentication status
-@app.route('/api/check-auth', methods=['GET'])
+@app.route('/api/check-auth')
 def check_auth():
-    if 'user_id' in session:
-        refresh_session()
-        return jsonify({
-            "authenticated": True,
-            "user_id": session['user_id'],
-            "username": session.get('username')
-        })
-    return jsonify({"authenticated": False}), 401
+    return jsonify({
+        'authenticated': 'user_id' in session
+    })
 
 @app.route('/api/update-profile', methods=['POST'])
 @login_required
@@ -1226,15 +1199,29 @@ def get_profile():
         goals = [{'id': row[0], 'book_title': row[1], 'goal_quantity': row[2], 'goal_type': row[3]} 
                 for row in c.fetchall()]
 
-        # Get user's reading list
+        # Get user's reading list with completion status
         c.execute("""
-            SELECT b.isbn, b.title, b.author
+            SELECT 
+                b.isbn,
+                b.title,
+                b.author,
+                rl.completed_date,
+                rl.added_date
             FROM reading_list rl
             JOIN books b ON rl.book_isbn = b.isbn
             WHERE rl.user_id = ?
+            ORDER BY 
+                CASE WHEN rl.completed_date IS NULL THEN 0 ELSE 1 END,
+                rl.added_date DESC
         """, (user_id,))
-        books = [{'isbn': row[0], 'title': row[1], 'author': row[2]} 
-                for row in c.fetchall()]
+        books = [{
+            'isbn': row[0],
+            'title': row[1],
+            'author': row[2],
+            'completed_date': row[3]
+        } for row in c.fetchall()]
+        
+        print(f"Profile books data: {books}")  # Debug log
 
         return jsonify({
             'success': True,
@@ -1409,43 +1396,101 @@ def set_club_book():
 def get_daily_goals():
     try:
         user_id = session.get('user_id')
-        if not user_id:
-            return jsonify({"error": "Not authenticated"}), 401
-
+        today = date.today().isoformat()
+        
         conn = sqlite3.connect('readit.db')
         c = conn.cursor()
         
-        # Get today's goals and their progress
-        today = date.today().isoformat()
+        # First get today's goals
         c.execute("""
             SELECT 
                 rg.id,
-                b.title as book_title,
+                b.title,
+                b.author,
                 rg.goal_quantity,
                 rg.goal_type,
-                drg.daily_progress,
-                drg.completed
+                COALESCE(drg.daily_progress, 0) as daily_progress,
+                COALESCE(drg.completed, 0) as completed
             FROM reading_goals rg
             JOIN books b ON rg.book_isbn = b.isbn
-            LEFT JOIN daily_reading_goals drg 
-                ON drg.reading_goal_id = rg.id 
+            LEFT JOIN daily_reading_goals drg ON rg.id = drg.reading_goal_id 
                 AND drg.date = ?
             WHERE rg.user_id = ? 
-            AND rg.archived = 0
+                AND rg.archived = 0
         """, (today, user_id))
         
-        goals = []
-        for row in c.fetchall():
-            goals.append({
-                'id': row[0],
-                'book_title': row[1],
-                'goal_quantity': row[2],
-                'goal_type': row[3],
-                'daily_progress': row[4] or 0,
-                'completed': bool(row[5])
-            })
+        goals = [{
+            'id': row[0],
+            'book_title': row[1],
+            'book_author': row[2],
+            'goal_quantity': row[3],
+            'goal_type': row[4],
+            'daily_progress': row[5],
+            'completed': bool(row[6])
+        } for row in c.fetchall()]
+
+        print("\nChecking daily completions:")
+        c.execute("""
+            SELECT 
+                drg.date,
+                COUNT(*) as total_goals,
+                SUM(CASE WHEN drg.completed = 1 THEN 1 ELSE 0 END) as completed_goals
+            FROM reading_goals rg
+            LEFT JOIN daily_reading_goals drg ON drg.reading_goal_id = rg.id
+            WHERE rg.user_id = ?
+            GROUP BY drg.date
+            ORDER BY drg.date DESC
+            LIMIT 10
+        """, (user_id,))
         
-        return jsonify(goals)
+        print("\nDaily completion records:")
+        completion_records = c.fetchall()
+        for record in completion_records:
+            print(f"Date: {record[0]}, Total goals: {record[1]}, Completed: {record[2]}")
+
+        # Simplified streak calculation
+        c.execute("""
+            WITH RECURSIVE dates(date) AS (
+                SELECT date('now', '-30 days')
+                UNION ALL
+                SELECT date(date, '+1 day')
+                FROM dates
+                WHERE date < date('now')
+            ),
+            daily_status AS (
+                SELECT 
+                    d.date,
+                    COALESCE(SUM(CASE WHEN drg.completed = 1 THEN 1 ELSE 0 END), 0) as completed_goals
+                FROM dates d
+                LEFT JOIN reading_goals rg ON rg.user_id = ?
+                LEFT JOIN daily_reading_goals drg 
+                    ON drg.reading_goal_id = rg.id 
+                    AND drg.date = d.date
+                GROUP BY d.date
+                ORDER BY d.date DESC
+            )
+            SELECT COUNT(*)
+            FROM (
+                SELECT date
+                FROM daily_status
+                WHERE completed_goals > 0
+                AND date <= date('now')
+                AND date > (
+                    SELECT COALESCE(MAX(date), date('now', '-999 days'))
+                    FROM daily_status
+                    WHERE completed_goals = 0
+                    AND date <= date('now')
+                )
+            )
+        """, (user_id,))
+        
+        streak = c.fetchone()[0] or 0
+        print(f"\nCalculated streak: {streak}")
+        
+        return jsonify({
+            'goals': goals,
+            'streak': streak
+        })
         
     except Exception as e:
         print(f"Error getting daily goals: {e}")
@@ -1453,6 +1498,12 @@ def get_daily_goals():
     finally:
         if 'conn' in locals():
             conn.close()
+
+@app.after_request
+def add_header(response):
+    if response.headers['Content-Type'].startswith('application/javascript'):
+        response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+    return response
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)

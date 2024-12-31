@@ -41,19 +41,22 @@ def init_db():
             CREATE TABLE IF NOT EXISTS books (
                 isbn TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
-                author TEXT NOT NULL
+                author TEXT NOT NULL,
+                cover_url TEXT
             )
         """)
         
-        # Create reading_list table
+        # Create reading_list table (keeping only the complete version)
         print("Creating reading_list table...")
         c.execute("""
             CREATE TABLE IF NOT EXISTS reading_list (
                 user_id INTEGER,
                 book_isbn TEXT,
-                PRIMARY KEY (user_id, book_isbn),
-                FOREIGN KEY (book_isbn) REFERENCES books(isbn),
-                FOREIGN KEY (user_id) REFERENCES users(id)
+                added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_date TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (book_isbn) REFERENCES books (isbn),
+                PRIMARY KEY (user_id, book_isbn)
             )
         """)
         
@@ -128,92 +131,6 @@ def init_db():
             )
         """)
         
-        c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            friend_code TEXT UNIQUE
-        )
-        ''')
-
-        # Create books table
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS books (
-                isbn TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                author TEXT NOT NULL,
-                cover_url TEXT
-            )
-        ''')
-
-        # Create reading_list table
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS reading_list (
-                user_id INTEGER,
-                book_isbn TEXT,
-                added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_date TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (id),
-                FOREIGN KEY (book_isbn) REFERENCES books (isbn),
-                PRIMARY KEY (user_id, book_isbn)
-            )
-        ''')
-
-        # Create reading_goals table
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS reading_goals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                book_isbn TEXT,
-                goal_type TEXT NOT NULL,
-                goal_quantity INTEGER NOT NULL,
-                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_date TIMESTAMP,
-                archived_date TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (id),
-                FOREIGN KEY (book_isbn) REFERENCES books (isbn)
-            )
-        ''')
-
-        # Create daily_progress table
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS daily_progress (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                goal_id INTEGER,
-                progress_date DATE,
-                quantity INTEGER DEFAULT 0,
-                completed BOOLEAN DEFAULT 0,
-                FOREIGN KEY (goal_id) REFERENCES reading_goals (id)
-            )
-        ''')
-
-        # Create reading_clubs table with current book support
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS reading_clubs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                created_by INTEGER NOT NULL,
-                join_code TEXT UNIQUE NOT NULL,
-                current_book_isbn TEXT,
-                book_set_at TIMESTAMP,
-                FOREIGN KEY (created_by) REFERENCES users (id),
-                FOREIGN KEY (current_book_isbn) REFERENCES books (isbn)
-            )
-        ''')
-
-        # Create club_members table
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS club_members (
-                club_id INTEGER,
-                user_id INTEGER,
-                joined_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (club_id) REFERENCES reading_clubs (id),
-                FOREIGN KEY (user_id) REFERENCES users (id),
-                PRIMARY KEY (club_id, user_id)
-            )
-        ''')
-
         conn.commit()
         print("Database initialization completed successfully!")
         return True
@@ -518,3 +435,45 @@ def update_goal_progress(user_id: int, goal_id: int, increment: bool = True) -> 
         """, (1 if increment else -1, goal_id, user_id))
         
         return True
+
+def mark_book_read(user_id: int, book_isbn: str, is_read: bool = True) -> bool:
+    """
+    Mark a book as read/unread and handle associated goals.
+    
+    Args:
+        user_id: The ID of the user
+        book_isbn: The ISBN of the book
+        is_read: True to mark as read, False to mark as unread
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        try:
+            # Update the reading_list entry using the existing completed_date column
+            c.execute("""
+                UPDATE reading_list 
+                SET completed_date = ?
+                WHERE user_id = ? AND book_isbn = ?
+            """, (
+                datetime.now().isoformat() if is_read else None,
+                user_id, 
+                book_isbn
+            ))
+            
+            if is_read:
+                # Archive any active goals for this book
+                c.execute("""
+                    UPDATE reading_goals
+                    SET archived = 1
+                    WHERE user_id = ? 
+                    AND book_isbn = ?
+                    AND archived = 0
+                """, (user_id, book_isbn))
+            
+            return True
+            
+        except sqlite3.Error as e:
+            print(f"Database error in mark_book_read: {e}")
+            return False

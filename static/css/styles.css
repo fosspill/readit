@@ -209,19 +209,127 @@ h1 {
 }
 
 .goal-item {
-    background: #fff;
-    border: 1px solid #DEC5A7;
-    border-radius: 8px;
-    padding: 1rem;
+    padding: 1.5rem;
     margin-bottom: 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    border-left: 4px solid #722F37;
+    transition: all 0.3s ease;
 }
 
 .goal-item.completed {
-    background: #f5f5f5;
-    opacity: 0.8;
+    background: #F5E6D3;
+    border-left-color: #8FB996;
+}
+
+.goal-info {
+    margin-bottom: 1rem;
+}
+
+.goal-info h4 {
+    margin: 0;
+    color: #2C1810;
+    font-size: 1.2rem;
+    font-family: 'Crimson Text', serif;
+}
+
+.book-author {
+    color: #666;
+    font-style: italic;
+    margin: 0.3rem 0;
+    font-family: 'Crimson Text', serif;
+}
+
+.goal-target {
+    color: #722F37;
+    margin: 0.3rem 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.goal-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 4px;
+    background: #DEC5A7;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background: #722F37;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.progress-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.8rem;
+}
+
+.progress-count {
+    color: #2C1810;
+    font-family: 'Crimson Text', serif;
+    font-size: 1.1rem;
+    min-width: 80px;
+    text-align: center;
+}
+
+.progress-button {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    background: #DEC5A7;
+    color: #2C1810;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.progress-button:hover {
+    background: #d4b696;
+    transform: translateY(-2px);
+}
+
+.complete-button {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    background: #722F37;
+    color: #F5E6D3;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.complete-button:hover {
+    background: #8B3741;
+    transform: translateY(-2px);
+}
+
+.complete-button.completed {
+    background: #8FB996;
+}
+
+.checkmark {
+    font-size: 1.2rem;
+    font-weight: bold;
 }
 
 .goal-info {
@@ -1183,4 +1291,141 @@ button:hover {
     color: #666;
     font-size: 0.9rem;
     margin-top: 0.5rem;
+}
+
+.book-card.completed {
+    background: #f8f4ff;
+    border-color: #e0d5f5;
+    opacity: 0.85;
+}
+
+.book-card.completed .book-info h4 {
+    text-decoration: line-through;
+    text-decoration-color: rgba(0,0,0,0.2);
+}
+
+.completion-badge {
+    display: inline-block;
+    background: #ffd700;
+    color: #4a4a4a;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    margin-top: 5px;
+}
+
+.action-button.secondary {
+    background: #e0e0e0;
+    color: #666;
+}
+
+.action-button.primary {
+    background: #4a90e2;
+    color: white;
+}
+.action-button.secondary {
+    background: #e0e0e0;
+    color: #666;
+}
+
+.action-button.primary {
+    background: #4a90e2;
+    color: white;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+    font-style: italic;
+    background: #fff9f0;
+    border-radius: 8px;
+    border: 1px dashed #e2d5c5;
+}
+
+.empty-state p {
+    margin: 0;
+}
+
+.book-card, .goal-card {
+    background: #fff9f0;
+    border: 1px solid #e2d5c5;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+}
+
+.book-card:hover, .goal-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.book-card.completed, .goal-card.completed {
+    background: #f8f4ff;
+    border-color: #e0d5f5;
+    opacity: 0.85;
+}
+
+.book-card.completed .book-info h4, 
+.goal-card.completed .goal-info h4 {
+    text-decoration: line-through;
+    text-decoration-color: rgba(0,0,0,0.2);
+}
+
+.book-info, .goal-info {
+    margin-bottom: 10px;
+}
+
+.book-info h4, .goal-info h4 {
+    margin: 0;
+    color: #2c1810;
+    font-size: 1.1em;
+}
+
+.book-info p, .goal-info p {
+    margin: 5px 0 0;
+    color: #666;
+    font-size: 0.9em;
+}
+
+.completion-badge {
+    display: inline-block;
+    background: #ffd700;
+    color: #4a4a4a;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    margin-top: 5px;
+}
+
+.book-actions, .goal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.action-button.secondary {
+    background: #e0e0e0;
+    color: #666;
+}
+
+.action-button.primary {
+    background: #4a90e2;
+    color: white;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+    font-style: italic;
+    background: #fff9f0;
+    border-radius: 8px;
+    border: 1px dashed #e2d5c5;
+}
+
+.empty-state p {
+    margin: 0;
 }
