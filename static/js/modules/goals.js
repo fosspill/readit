@@ -6,7 +6,9 @@ export const goals = {
 
     async loadTodayGoals() {
         try {
-            const response = await fetch('/api/get-daily-goals');
+            const response = await fetch('/api/get-daily-goals', {
+                credentials: 'include'
+            });
             const data = await response.json();
             console.log('Daily goals response:', data);
             

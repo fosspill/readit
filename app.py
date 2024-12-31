@@ -24,11 +24,14 @@ auth_manager = AuthManager()
 
 # Session security configuration
 app.config.update(
-    SESSION_COOKIE_SECURE=False,      # Only send cookie over HTTPS
-    SESSION_COOKIE_HTTPONLY=True,    # Prevent JavaScript access to session cookie
-    SESSION_COOKIE_SAMESITE='Lax',   # Protect against CSRF
-    PERMANENT_SESSION_LIFETIME=timedelta(days=7),  # Session expires after 7 days
-    SESSION_COOKIE_NAME='readit_session'  # Custom cookie name
+    SESSION_COOKIE_SECURE=False,       
+    SESSION_COOKIE_HTTPONLY=True,     
+    SESSION_COOKIE_SAMESITE='Lax',    
+    PERMANENT_SESSION_LIFETIME=timedelta(days=7),
+    SESSION_COOKIE_NAME='readit_session',
+    # Add these new settings
+    SESSION_COOKIE_DOMAIN=None,       
+    SESSION_COOKIE_PATH='/',       
 )
 
 class OpenBookAPI:
@@ -681,12 +684,16 @@ def login():
         success, message, user_id = auth_manager.verify_login(username, password)
         
         if success:
+            session.permanent = True  # Make session permanent
             session['user_id'] = user_id
             session['logged_in_at'] = datetime.now().isoformat()
-            return jsonify({
+            
+            # Set cookie parameters explicitly
+            response = jsonify({
                 "message": "Login successful",
                 "userId": user_id
             })
+            return response
         else:
             return jsonify({"error": message}), 401
 
@@ -1503,6 +1510,26 @@ def get_daily_goals():
 def add_header(response):
     if response.headers['Content-Type'].startswith('application/javascript'):
         response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+    return response
+
+# Add this function to handle CORS and session cookies
+@app.after_request
+def after_request(response):
+    # Allow credentials
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    
+    # Set allowed origins - replace with your domain
+    if app.debug:
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5000')
+    else:
+        response.headers.add('Access-Control-Allow-Origin', 'https://readit.hexy.nl')
+    
+    # Allow methods
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    
+    # Allow headers
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    
     return response
 
 if __name__ == '__main__':
