@@ -1,244 +1,215 @@
-import bcrypt
-from datetime import datetime, timedelta
-import secrets
+from typing import Tuple, Optional
 import sqlite3
-from typing import Optional, Tuple
+import bcrypt
+from db_utils import init_db
+import os
+from utils import generate_memorable_code
+from flask import session, current_app
+from datetime import datetime, timedelta
 
 class AuthManager:
     def __init__(self, db_path: str = 'readit.db'):
         self.db_path = db_path
-        self._init_auth_tables()
+        if not os.path.exists(db_path):
+            init_db()
 
-    def _init_auth_tables(self) -> None:
-        """Initialize authentication-related database tables."""
-        conn = sqlite3.connect(self.db_path)
-        c = conn.cursor()
+    def check_auth(self) -> Tuple[dict, int]:
+        """Check if user is authenticated"""
         try:
-            # Update users table with hashed username
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username_hash BLOB NOT NULL UNIQUE,
-                    password_hash BLOB NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_login TIMESTAMP,
-                    failed_attempts INTEGER DEFAULT 0,
-                    locked_until TIMESTAMP
-                )
-            """)
-            conn.commit()
-        finally:
-            conn.close()
+            user_id = session.get('user_id')
+            if user_id:
+                # Refresh session
+                session.modified = True
+                return {"authenticated": True, "userId": user_id}, 200
+            return {"authenticated": False}, 200
+        except Exception as e:
+            print(f"Auth check error: {e}")
+            return {"authenticated": False}, 500
 
-    def register_user(self, username: str, password: str) -> Tuple[bool, str]:
-        """Register a new user with the given username and password."""
+    def handle_login(self, username: str, password: str) -> Tuple[dict, int]:
+        if not username or not password:
+            return {"error": "Username and password are required"}, 400
+
+        success, message, user_id = self.verify_login(username, password)
+        
+        if success and user_id:
+            try:
+                session.permanent = True
+                session['user_id'] = user_id
+                session['username'] = username
+                session['logged_in_at'] = datetime.now().isoformat()
+                session.modified = True
+                
+                return {
+                    "success": True,
+                    "userId": user_id,
+                    "username": username,
+                    "authenticated": True
+                }, 200
+            except Exception as e:
+                print(f"Session error during login: {e}")
+                return {"error": "Session error"}, 500
+        else:
+            return {"error": message}, 401
+
+    def handle_register(self, username: str, password: str) -> Tuple[dict, int]:
+        if not username or not password:
+            return {"error": "Username and password are required"}, 400
+
         try:
-            # Hash both username and password
             username_hash = bcrypt.hashpw(username.lower().encode('utf-8'), bcrypt.gensalt())
-            password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+            success, message = self.register_user(username, password, username_hash)
+            
+            if success:
+                conn = sqlite3.connect(self.db_path)
+                c = conn.cursor()
+                try:
+                    c.execute('SELECT id, friend_code FROM users WHERE username_hash = ?', (username_hash,))
+                    user_id, friend_code = c.fetchone()
+                    
+                    session['user_id'] = user_id
+                    session['username'] = username
+                    session['logged_in_at'] = datetime.now().isoformat()
+                    session.modified = True
+                    
+                    return {
+                        "success": True,
+                        "userId": user_id,
+                        "authenticated": True,
+                        "friendCode": friend_code
+                    }, 200
+                finally:
+                    conn.close()
+            else:
+                return {"error": message}, 409
+        except Exception as e:
+            print(f"Registration error: {e}")
+            return {"error": "Registration failed"}, 500
 
+    def handle_logout(self) -> Tuple[dict, int]:
+        try:
+            session.clear()
+            return {"success": True}, 200
+        except Exception as e:
+            print(f"Logout error: {e}")
+            return {"error": "Logout failed"}, 500
+
+    def register_user(self, username: str, password: str, username_hash: bytes) -> Tuple[bool, str]:
+        try:
+            password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+            friend_code = generate_memorable_code()
+            
             conn = sqlite3.connect(self.db_path)
             c = conn.cursor()
             
             try:
-                c.execute("INSERT INTO users (username_hash, password_hash) VALUES (?, ?)",
-                         (username_hash, password_hash))
+                c.execute("""
+                    INSERT INTO users 
+                    (username_hash, password_hash, friend_code) 
+                    VALUES (?, ?, ?)
+                """, (username_hash, password_hash, friend_code))
                 conn.commit()
                 return True, "Registration successful"
-            except sqlite3.IntegrityError:
-                return False, "Username already exists"
+            except sqlite3.IntegrityError as e:
+                if "username_hash" in str(e):
+                    return False, "Username already exists"
+                if "friend_code" in str(e):
+                    return False, "Please try again"
+                return False, "Registration failed"
         except Exception as e:
-            return False, f"Registration failed: {str(e)}"
+            print(f"Database error during registration: {e}")
+            return False, "Registration failed"
         finally:
-            conn.close()
+            if 'conn' in locals():
+                conn.close()
 
     def verify_login(self, username: str, password: str) -> Tuple[bool, str, Optional[int]]:
-        """Verify user login credentials."""
-        conn = sqlite3.connect(self.db_path)
-        c = conn.cursor()
-        
         try:
-            # Get all users to find matching username hash
-            c.execute("SELECT id, username_hash, password_hash, failed_attempts, locked_until FROM users")
-            users = c.fetchall()
-            user = None
-            
-            # Find matching user by comparing hashed usernames
-            for uid, stored_username_hash, stored_pass_hash, failed_attempts, locked_until in users:
-                if bcrypt.checkpw(username.lower().encode('utf-8'), stored_username_hash):
-                    user = (uid, stored_pass_hash, failed_attempts, locked_until)
-                    break
-                
-            if not user:
-                return False, "Invalid username or password", None
-
-            user_id, stored_hash, failed_attempts, locked_until = user
-            
-            if locked_until and datetime.fromisoformat(locked_until) > datetime.now():
-                return False, "Account is temporarily locked", None
-
-            if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
-                c.execute("""
-                    UPDATE users 
-                    SET failed_attempts = 0, 
-                        locked_until = NULL, 
-                        last_login = CURRENT_TIMESTAMP 
-                    WHERE id = ?
-                """, (user_id,))
-                conn.commit()
-                return True, "Login successful", user_id
-                
-            c.execute("""
-                UPDATE users 
-                SET failed_attempts = failed_attempts + 1,
-                    locked_until = CASE 
-                        WHEN failed_attempts >= 4 THEN datetime('now', '+15 minutes')
-                        ELSE NULL 
-                    END
-                WHERE id = ?
-            """, (user_id,))
-            conn.commit()
-            return False, "Invalid username or password", None
-
-        finally:
-            conn.close()
-
-    def verify_password_reset(self, username: str, book_title: str) -> Tuple[bool, str]:
-        """Verify password reset attempt using a book from user's reading list."""
-        conn = sqlite3.connect(self.db_path)
-        c = conn.cursor()
-        
-        try:
-            # Get all users since we need to check hashed usernames
-            c.execute("""
-                SELECT u.id, u.username_hash
-                FROM users u
-                JOIN reading_list rl ON u.id = rl.user_id
-                JOIN books b ON rl.book_isbn = b.isbn
-                WHERE LOWER(b.title) = LOWER(?)
-            """, (book_title,))
-            
-            potential_matches = c.fetchall()
-            user_id = None
-            
-            # Find matching user by comparing hashed usernames
-            for uid, stored_username_hash in potential_matches:
-                if bcrypt.checkpw(username.lower().encode('utf-8'), stored_username_hash):
-                    user_id = uid
-                    break
-                
-            if not user_id:
-                return False, "Invalid username or book title"
-
-            # Log the reset attempt
-            c.execute("""
-                INSERT INTO password_reset_attempts (user_id, successful)
-                VALUES (?, ?)
-            """, (user_id, True))
-            
-            conn.commit()
-            return True, "Password reset verification successful"
-
-        except Exception as e:
-            return False, f"Verification failed: {str(e)}"
-        finally:
-            conn.close()
-
-    def reset_password(self, username: str, new_password: str) -> Tuple[bool, str]:
-        """Reset user's password after successful verification."""
-        try:
-            # Generate new password hash
-            new_password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
-
             conn = sqlite3.connect(self.db_path)
             c = conn.cursor()
             
-            # Get all users to find matching username hash
-            c.execute("SELECT id, username_hash FROM users")
+            c.execute('SELECT id, username_hash, password_hash FROM users')
             users = c.fetchall()
-            user_id = None
             
-            # Find matching user by comparing hashed usernames
-            for uid, stored_username_hash in users:
-                if bcrypt.checkpw(username.lower().encode('utf-8'), stored_username_hash):
-                    user_id = uid
-                    break
+            username_bytes = username.lower().encode('utf-8')
+            password_bytes = password.encode('utf-8')
             
-            if not user_id:
-                return False, "User not found"
+            for user_id, stored_username_hash, stored_password_hash in users:
+                try:
+                    if bcrypt.checkpw(username_bytes, stored_username_hash):
+                        if bcrypt.checkpw(password_bytes, stored_password_hash):
+                            c.execute("""
+                                UPDATE users 
+                                SET last_login = CURRENT_TIMESTAMP,
+                                    failed_attempts = 0,
+                                    locked_until = NULL
+                                WHERE id = ?
+                            """, (user_id,))
+                            conn.commit()
+                            return True, "Login successful", user_id
+                        
+                        c.execute("""
+                            UPDATE users 
+                            SET failed_attempts = failed_attempts + 1
+                            WHERE id = ?
+                        """, (user_id,))
+                        conn.commit()
+                        return False, "Invalid username or password", None
+                except Exception as e:
+                    print(f"Error checking credentials: {e}")
+                    continue
             
-            c.execute("""
-                UPDATE users 
-                SET password_hash = ?,
-                    failed_attempts = 0,
-                    locked_until = NULL
-                WHERE id = ?
-            """, (new_password_hash, user_id))
-            
-            if c.rowcount == 0:
-                return False, "Password reset failed"
-
-            conn.commit()
-            return True, "Password reset successful"
-
+            return False, "Invalid username or password", None
+                
         except Exception as e:
-            return False, f"Password reset failed: {str(e)}"
+            print(f"Database error during login: {e}")
+            return False, "Login failed", None
         finally:
-            conn.close()
+            if 'conn' in locals():
+                conn.close() 
 
     def update_password(self, user_id: int, new_password: str) -> Tuple[bool, str]:
-        """Update user's password."""
         try:
-            # Generate new password hash
-            new_password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
-
+            password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+            
             conn = sqlite3.connect(self.db_path)
             c = conn.cursor()
             
             c.execute("""
                 UPDATE users 
-                SET password_hash = ?,
-                    failed_attempts = 0,
-                    locked_until = NULL
+                SET password_hash = ?
                 WHERE id = ?
-            """, (new_password_hash, user_id))
+            """, (password_hash, user_id))
             
-            if c.rowcount == 0:
-                return False, "User not found"
-
             conn.commit()
             return True, "Password updated successfully"
-
         except Exception as e:
-            return False, f"Password update failed: {str(e)}"
+            print(f"Password update error: {e}")
+            return False, "Failed to update password"
         finally:
-            conn.close()
+            if 'conn' in locals():
+                conn.close() 
 
     def update_username(self, user_id: int, new_username: str) -> Tuple[bool, str]:
-        """Update user's username."""
         try:
-            # Hash new username
-            new_username_hash = bcrypt.hashpw(new_username.lower().encode('utf-8'), bcrypt.gensalt())
-
+            username_hash = bcrypt.hashpw(new_username.lower().encode('utf-8'), bcrypt.gensalt())
+            
             conn = sqlite3.connect(self.db_path)
             c = conn.cursor()
             
-            try:
-                c.execute("""
-                    UPDATE users 
-                    SET username_hash = ?
-                    WHERE id = ?
-                """, (new_username_hash, user_id))
-                
-                if c.rowcount == 0:
-                    return False, "User not found"
-
-                conn.commit()
-                return True, "Username updated successfully"
-            except sqlite3.IntegrityError:
-                return False, "Username already exists"
-
+            # Check if username is already taken
+            c.execute('SELECT 1 FROM users WHERE username_hash = ? AND id != ?', (username_hash, user_id))
+            if c.fetchone():
+                return False, "Username already taken"
+            
+            # Update username
+            c.execute('UPDATE users SET username_hash = ? WHERE id = ?', (username_hash, user_id))
+            conn.commit()
+            
+            return True, "Username updated successfully"
         except Exception as e:
-            return False, f"Username update failed: {str(e)}"
+            print(f"Username update error: {e}")
+            return False, "Failed to update username"
         finally:
-            conn.close() 
+            if 'conn' in locals():
+                conn.close() 

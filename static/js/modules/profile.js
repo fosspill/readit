@@ -1,13 +1,22 @@
 export const profile = {
     async loadProfile() {
         try {
-            const response = await fetch('/api/get-profile', {
-                credentials: 'include'
-            });
-            const data = await response.json();
+            const [profileResponse, usernameResponse] = await Promise.all([
+                fetch('/api/get-profile', { credentials: 'include' }),
+                fetch('/api/get-current-username', { credentials: 'include' })
+            ]);
             
-            this.renderGoals(data.goals);
-            this.renderBooks(data.books);
+            const [profileData, usernameData] = await Promise.all([
+                profileResponse.json(),
+                usernameResponse.json()
+            ]);
+            
+            if (usernameData.success) {
+                document.getElementById('profile-username').placeholder = usernameData.username;
+            }
+            
+            this.renderGoals(profileData.goals);
+            this.renderBooks(profileData.books);
         } catch (error) {
             console.error('Failed to load profile:', error);
         }
@@ -57,7 +66,6 @@ export const profile = {
         }
 
         container.innerHTML = books.map(book => {
-            console.log('Book data:', book);
             const isCompleted = Boolean(book.completed_date);
             return `
                 <div class="book-card ${isCompleted ? 'completed' : ''}">
@@ -83,7 +91,6 @@ export const profile = {
 
     async toggleBookRead(isbn, markAsRead) {
         try {
-            console.log('Toggling book read status:', { isbn, markAsRead });
             const response = await fetch('/api/mark-book-read', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -121,7 +128,7 @@ export const profile = {
             
             if (response.ok) {
                 ui.showSuccess(archive ? '✨ Goal completed!' : 'Goal resumed');
-                this.loadProfile();
+                await this.loadProfile();
             }
         } catch (error) {
             console.error('Failed to archive goal:', error);
@@ -141,10 +148,12 @@ export const profile = {
             });
             
             if (response.ok) {
-                this.loadProfile();
+                await this.loadProfile();
+                ui.showSuccess('Goal deleted successfully');
             }
         } catch (error) {
             console.error('Failed to delete goal:', error);
+            ui.showError('Failed to delete goal');
         }
     },
 
@@ -160,10 +169,12 @@ export const profile = {
             });
             
             if (response.ok) {
-                this.loadProfile();
+                await this.loadProfile();
+                ui.showSuccess('Book removed successfully');
             }
         } catch (error) {
             console.error('Failed to delete book:', error);
+            ui.showError('Failed to remove book');
         }
     }
 }; 

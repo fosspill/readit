@@ -13,104 +13,75 @@ window.books = books;
 window.goals = goals;
 window.profile = profile;
 
-// Export these functions so auth.js can use them
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('login-form-element');
+    if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const success = await auth.handleLogin();
+            if (success) {
+                await initializeApp();
+                attachEventListeners();
+            }
+            return false;
+        });
+    }
+
+    const registerForm = document.getElementById('register-form-element');
+    if (registerForm) {
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const success = await auth.handleRegister();
+            if (success) {
+                await initializeApp();
+                attachEventListeners();
+            }
+            return false;
+        });
+    }
+});
+
 export function initializeNavigation() {
-    console.log('Initializing navigation...'); // Debug log
-    
-    // Remove any existing event listeners by cloning and replacing nav items
+    console.log('Initializing navigation...');
     document.querySelectorAll('.nav-item').forEach(link => {
         const newLink = link.cloneNode(true);
         link.parentNode.replaceChild(newLink, link);
     });
     
-    // Set initial active state
     document.querySelector('[href="#today-goals"]')?.classList.add('active');
     
-    // Attach click handlers once
     document.querySelectorAll('.nav-item').forEach(link => {
         link.addEventListener('click', async (e) => {
             e.preventDefault();
-            const isAuthenticated = await auth.checkAuthentication();
-            if (!isAuthenticated) {
-                ui.toggleModal('auth-overlay', true);
-                return;
+            const section = link.getAttribute('href').substring(1);
+            ui.showSection(section);
+            
+            // Load profile data when switching to profile section
+            if (section === 'profile') {
+                await profile.loadProfile();
             }
-            
-            const sectionId = link.getAttribute('href').substring(1);
-            console.log('Navigating to section:', sectionId);
-            
-            // Only load data if it's not already loaded
-            switch(sectionId) {
-                case 'today-goals':
-                    await goals.loadTodayGoals();
-                    break;
-                case 'friends':
-                    await social.loadFriends();
-                    await social.loadClubs();
-                    break;
-                case 'add-goals':
-                    await books.updateReadingListSelect();
-                    break;
-                case 'profile':
-                    await profile.loadProfile();
-                    break;
-            }
-            
-            ui.showSection(sectionId);
         });
     });
 }
 
-export async function initializeApp() {
-    try {
-        console.log('Initializing app...'); // Debug log
-        
-        // Check authentication first
-        const isAuthenticated = await auth.checkAuthentication();
-        if (!isAuthenticated) {
-            console.log('Not authenticated, showing auth overlay');
-            ui.toggleModal('auth-overlay', true);
-            return false;
-        }
-
-        // Initialize sections
-        document.querySelectorAll('.section').forEach(section => {
-            section.style.display = 'none';
-        });
-
-        // Initialize navigation
-        initializeNavigation();
-
-        // Load initial data for the first visible section only
-        await goals.loadTodayGoals();
-
-        console.log('App initialization complete'); // Debug log
-        
-        // Show the initial section
-        ui.showSection('today-goals');
-        return true;
-    } catch (error) {
-        console.error('Failed to initialize app:', error);
-        ui.showError('Failed to load some components');
-        return false;
-    }
-}
-
 export function attachEventListeners() {
-    console.log('Attaching event listeners...'); // Debug log
-
-    // Books related
+    console.log('Attaching event listeners...');
+    
+    // Book search form
     document.getElementById('book-search-form')?.addEventListener('submit', e => {
         e.preventDefault();
         books.searchBooks(document.getElementById('book-search').value);
     });
 
-    // Goals related
+    // Create goal form
     document.getElementById('create-goal-form')?.addEventListener('submit', e => {
         e.preventDefault();
         goals.createGoal(e);
     });
-    
+
+    // Update progress form
     document.getElementById('update-progress-form')?.addEventListener('submit', e => {
         e.preventDefault();
         const goalId = e.target.dataset.goalId;
@@ -118,48 +89,68 @@ export function attachEventListeners() {
         goals.updateProgress(goalId, parseInt(pages));
     });
 
-    // Social related
+    // Create club form
     document.getElementById('create-club-form')?.addEventListener('submit', e => {
         e.preventDefault();
         social.createClub(e);
     });
 
-    // Logout
+    // Join club form
+    document.getElementById('join-club-form')?.addEventListener('submit', e => {
+        e.preventDefault();
+        social.joinClub(e);
+    });
+
+    // Add friend form
+    document.getElementById('add-friend-form')?.addEventListener('submit', e => {
+        e.preventDefault();
+        social.addFriend(e);
+    });
+
+    // Set club book form
+    document.getElementById('set-club-book-form')?.addEventListener('submit', e => {
+        e.preventDefault();
+        social.setClubBook(e);
+    });
+
+    // Logout button
     document.getElementById('logout-button')?.addEventListener('click', e => {
         e.preventDefault();
         auth.handleLogout();
     });
 }
 
-// Initialize the app when the page loads
-document.addEventListener('DOMContentLoaded', async () => {
-    console.log('DOM Content Loaded, checking session...');
+export async function initializeApp() {
+    console.log('Initializing app...');
+    const isAuthenticated = await auth.checkAuthentication();
     
-    // Attach auth form listeners first
-    document.getElementById('login-form-element')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const success = await auth.handleLogin(e);
-        if (success) {
-            console.log('Login successful, initializing app...');
-            await initializeApp();
-            attachEventListeners();
-        }
+    if (!isAuthenticated) {
+        console.log('Not authenticated, showing auth overlay');
         return false;
-    });
-    
-    document.getElementById('register-form-element')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const success = await auth.handleRegister(e);
-        if (success) {
-            console.log('Registration successful, initializing app...');
-            await initializeApp();
-            attachEventListeners();
-        }
-        return false;
-    });
+    }
 
-    // Try to initialize the app (will check authentication)
-    const initialized = await initializeApp();
+    initializeNavigation();
+    
+    try {
+        // Show the Today section first
+        ui.showSection('today-goals');
+        
+        // Then load all the data
+        await Promise.all([
+            goals.loadTodayGoals(),
+            books.loadReadingList(),
+            social.loadSocialSection(),
+            profile.loadProfile()
+        ]);
+    } catch (error) {
+        console.error('Error initializing app:', error);
+    }
+    
+    console.log('App initialization complete');
+    return true;
+}
+
+initializeApp().then(initialized => {
     if (initialized) {
         attachEventListeners();
     }

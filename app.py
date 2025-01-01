@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, make_response
 from db_utils import init_db, add_user, save_reading_goal, update_daily_progress, get_streak_and_friends, get_reading_list, add_book_to_reading_list, get_reading_goals, verify_database, add_book_details, mark_book_read
 from datetime import date, timedelta, datetime
 import sqlite3
@@ -10,57 +10,72 @@ from functools import wraps
 from string import ascii_uppercase, digits
 import random
 import string
+from session_utils import SQLiteSessionInterface, cleanup_expired_sessions
+import os
+from utils import generate_memorable_code
+from book_api import OpenBookAPI
+from flask_session import Session
+from werkzeug.security import generate_password_hash
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(32)
 
-# Initialize the database when starting the app
-with app.app_context():
-    init_db()
-    verify_database()
-
-# Initialize auth manager
-auth_manager = AuthManager()
-
-# Session security configuration
 app.config.update(
-    SESSION_COOKIE_SECURE=False,       
-    SESSION_COOKIE_HTTPONLY=True,     
-    SESSION_COOKIE_SAMESITE='Lax',    
+    SECRET_KEY=secrets.token_hex(32),
     PERMANENT_SESSION_LIFETIME=timedelta(days=7),
     SESSION_COOKIE_NAME='readit_session',
-    # Add these new settings
-    SESSION_COOKIE_DOMAIN=None,       
-    SESSION_COOKIE_PATH='/',       
+    SESSION_COOKIE_SECURE=False,  # Set to True in production with HTTPS
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_DOMAIN=None,
+    SESSION_COOKIE_PATH='/',
+    SESSION_TYPE='filesystem'
 )
 
-class OpenBookAPI:
-    def __init__(self):
-        pass
+Session(app) 
 
-    def search_books(self, query):
-        try:
-            # Search for books using isbnlib
-            results = []
-            books = isbnlib.goom(query)
-            
-            for book in books[:10]:  # Limit to 10 results
-                # Extract metadata
-                result = {
-                    "title": book.get("Title", ""),
-                    "author": book.get("Authors", [""])[0],  # Get first author
-                    "isbn": book.get("ISBN-13", "")  # Get ISBN-13
-                }
-                # Only include if we have all required fields
-                if result["title"] and result["author"] and result["isbn"]:
-                    results.append(result)
-            return results
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = make_response()
+        origin = request.headers.get('Origin')
+        if origin:
+            response.headers.update({
+                'Access-Control-Allow-Origin': origin,
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                'Access-Control-Allow-Credentials': 'true',
+                'Access-Control-Max-Age': '3600'
+            })
+        return response
 
-        except Exception as e:
-            print(f"Error searching books: {e}")
-            return []
+@app.after_request
+def after_request(response):
+    origin = request.headers.get('Origin')
+    if origin:
+        response.headers.update({
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With'
+        })
+    return response
 
 open_book_api = OpenBookAPI()
+auth_manager = AuthManager()
+
+
+@app.before_request
+def before_request():
+    try:
+        # Run cleanup periodically (e.g., 1% chance per request)
+        if secrets.randbelow(100) == 0:
+            cleanup_expired_sessions()
+            
+        if 'user_id' in session:
+            session.modified = True
+    except Exception as e:
+        print(f"Session refresh error: {e}")
+
 
 def refresh_session():
     """Refresh session if it's close to expiring"""
@@ -74,9 +89,14 @@ def refresh_session():
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            return jsonify({"error": "Not authenticated"}), 401
-        return f(*args, **kwargs)
+        try:
+            if 'user_id' not in session:
+                return jsonify({"error": "Not authenticated"}), 401
+            session.modified = True
+            return f(*args, **kwargs)
+        except Exception as e:
+            print(f"Auth decorator error: {e}")
+            return jsonify({"error": "Authentication error"}), 401
     return decorated_function
 
 @app.route('/')
@@ -675,31 +695,41 @@ def delete_book():
 def login():
     try:
         data = request.json
-        username = data.get('username')
-        password = data.get('password')
+        print(f"Login attempt for: {data.get('username')}")  # Debug log
         
-        if not username or not password:
-            return jsonify({"error": "Username and password are required"}), 400
-
-        success, message, user_id = auth_manager.verify_login(username, password)
+        response, status_code = auth_manager.handle_login(data.get('username'), data.get('password'))
+        print(f"Login response: {response}, status: {status_code}")  # Debug log
         
-        if success:
-            session.permanent = True  # Make session permanent
-            session['user_id'] = user_id
+        if status_code == 200 and response.get('authenticated'):
+            session.permanent = True
+            session['user_id'] = response['userId']
             session['logged_in_at'] = datetime.now().isoformat()
+            session.modified = True
+            print(f"Session after login: {dict(session)}")  # Debug log
             
-            # Set cookie parameters explicitly
-            response = jsonify({
-                "message": "Login successful",
-                "userId": user_id
-            })
-            return response
-        else:
-            return jsonify({"error": message}), 401
-
+        return jsonify(response), status_code
     except Exception as e:
-        print(f"Login error: {str(e)}")
-        return jsonify({"error": "Login failed"}), 500
+        print(f"Login error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/check-auth')
+def check_auth():
+    try:
+        print(f"Current session: {dict(session)}")  # Debug log
+        user_id = session.get('user_id')
+        print(f"Found user_id in session: {user_id}")  # Debug log
+        
+        if user_id:
+            session.modified = True
+            return jsonify({
+                "authenticated": True,
+                "userId": user_id
+            }), 200
+            
+        return jsonify({"authenticated": False}), 200
+    except Exception as e:
+        print(f"Auth check error: {e}")
+        return jsonify({"authenticated": False}), 500
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -708,31 +738,16 @@ def register():
         username = data.get('username')
         password = data.get('password')
         
-        if not username or not password:
-            return jsonify({"error": "Username and password are required"}), 400
-
-        success, message = auth_manager.register_user(username, password)
+        response, status_code = auth_manager.handle_register(username, password)
+        return jsonify(response), status_code
         
-        if success:
-            # Log the user in after successful registration
-            _, _, user_id = auth_manager.verify_login(username, password)
-            session['user_id'] = user_id
-            session['logged_in_at'] = datetime.now().isoformat()
-            return jsonify({
-                "message": "Registration successful",
-                "userId": user_id
-            })
-        else:
-            return jsonify({"error": message}), 400
-
     except Exception as e:
-        print(f"Registration error: {str(e)}")
+        print(f"Registration error: {e}")
         return jsonify({"error": "Registration failed"}), 500
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
-    session.clear()
-    return jsonify({"message": "Logout successful"})
+    return jsonify(*auth_manager.handle_logout())
 
 @app.route('/api/verify-reset', methods=['POST'])
 def verify_reset():
@@ -764,13 +779,6 @@ def reset_password():
     success, message = auth_manager.reset_password(username, new_password)
     return jsonify({"success": success, "message": message})
 
-
-# Add a route to check authentication status
-@app.route('/api/check-auth')
-def check_auth():
-    return jsonify({
-        'authenticated': 'user_id' in session
-    })
 
 @app.route('/api/update-profile', methods=['POST'])
 @login_required
@@ -1010,7 +1018,7 @@ def get_clubs():
         conn = sqlite3.connect('readit.db')
         c = conn.cursor()
         
-        # Get all clubs with current book info and reader count
+        # Get clubs where user is a member or creator
         c.execute("""
             WITH reader_counts AS (
                 SELECT rc.id as club_id, COUNT(DISTINCT rl.user_id) as readers
@@ -1023,43 +1031,43 @@ def get_clubs():
                 rc.name,
                 rc.join_code,
                 rc.created_by,
-                COUNT(cm2.user_id) as member_count,
                 rc.current_book_isbn,
                 b.title as book_title,
-                rc.book_set_at,
+                b.author as book_author,
+                (SELECT COUNT(*) FROM club_members WHERE club_id = rc.id) as member_count,
                 r.readers as readers_count,
                 EXISTS(
-                    SELECT 1 FROM reading_list rl 
-                    WHERE rl.user_id = ? AND rl.book_isbn = rc.current_book_isbn
+                    SELECT 1 FROM reading_list rl2 
+                    WHERE rl2.user_id = ? AND rl2.book_isbn = rc.current_book_isbn
                 ) as in_my_list
             FROM reading_clubs rc
-            JOIN club_members cm ON rc.id = cm.club_id
-            LEFT JOIN club_members cm2 ON rc.id = cm2.club_id
+            LEFT JOIN club_members cm ON rc.id = cm.club_id
             LEFT JOIN books b ON rc.current_book_isbn = b.isbn
             LEFT JOIN reader_counts r ON rc.id = r.club_id
-            WHERE cm.user_id = ?
+            WHERE rc.created_by = ? OR cm.user_id = ?
             GROUP BY rc.id
-        """, (user_id, user_id))
+        """, (user_id, user_id, user_id))
         
         clubs = []
         for row in c.fetchall():
-            club = {
+            clubs.append({
                 'id': row[0],
                 'name': row[1],
-                'join_code': row[2] if row[3] == user_id else None,
-                'is_owner': row[3] == user_id,
-                'member_count': row[4],
-                'current_book': {
-                    'isbn': row[5],
-                    'title': row[6],
-                    'in_my_list': bool(row[9])
-                } if row[5] else None,
-                'readers_count': row[8] or 0
-            }
-            clubs.append(club)
+                'join_code': row[2],
+                'created_by': row[3],
+                'current_book_isbn': row[4],
+                'book_title': row[5],
+                'book_author': row[6],
+                'member_count': row[7],
+                'readers_count': row[8],
+                'in_my_list': bool(row[9]),
+                'user_id': user_id
+            })
         
         return jsonify(clubs)
+        
     except Exception as e:
+        print(f"Error in get_clubs: {e}")  # Add logging
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
@@ -1072,7 +1080,6 @@ def get_friends():
         conn = sqlite3.connect('readit.db')
         c = conn.cursor()
         
-        # Get all friends and their current streaks
         c.execute("""
             WITH friend_streaks AS (
                 SELECT 
@@ -1084,15 +1091,31 @@ def get_friends():
                 WHERE drg.completed = 1
                 AND drg.date >= date('now', '-30 days')
                 GROUP BY u.id
+            ),
+            friend_books AS (
+                SELECT 
+                    rl.user_id,
+                    b.title as current_book,
+                    b.author as book_author,
+                    b.isbn as book_isbn
+                FROM reading_list rl
+                JOIN books b ON rl.book_isbn = b.isbn
+                WHERE rl.completed_date IS NULL
+                GROUP BY rl.user_id, b.title, b.author, b.isbn
+                ORDER BY RANDOM()
             )
             SELECT 
                 u.id,
                 u.friend_code,
-                COALESCE(fs.streak, 0) as streak
+                COALESCE(fs.streak, 0) as streak,
+                (SELECT current_book FROM friend_books fb WHERE fb.user_id = u.id LIMIT 1) as current_book,
+                (SELECT book_author FROM friend_books fb WHERE fb.user_id = u.id LIMIT 1) as book_author,
+                (SELECT book_isbn FROM friend_books fb WHERE fb.user_id = u.id LIMIT 1) as book_isbn
             FROM friendships f
             JOIN users u ON f.user_id2 = u.id
             LEFT JOIN friend_streaks fs ON u.id = fs.friend_id
             WHERE f.user_id1 = ?
+            GROUP BY u.id
         """, (user_id,))
         
         friends = []
@@ -1100,7 +1123,10 @@ def get_friends():
             friends.append({
                 'id': row[0],
                 'username': row[1],
-                'streak': row[2]
+                'streak': row[2],
+                'currently_reading': row[3],
+                'book_author': row[4],
+                'book_isbn': row[5]
             })
         
         return jsonify(friends)
@@ -1295,31 +1321,35 @@ def delete_account():
     finally:
         conn.close()
 
-@app.route('/api/get-friend-code')
+@app.route('/api/get-friend-code', methods=['GET'])
 @login_required
 def get_friend_code():
     try:
         user_id = session.get('user_id')
+        
         conn = sqlite3.connect('readit.db')
-        c = conn.cursor()
-        
-        # Get the user's friend code
-        c.execute("SELECT friend_code FROM users WHERE id = ?", (user_id,))
-        result = c.fetchone()
-        
-        if result and result[0]:
-            friend_code = result[0]
-        else:
-            # Generate a new friend code if none exists
-            friend_code = generate_unique_code()
-            c.execute("UPDATE users SET friend_code = ? WHERE id = ?", (friend_code, user_id))
-            conn.commit()
-        
-        return jsonify({"success": True, "friend_code": friend_code})
+        try:
+            c = conn.cursor()
+            c.execute("SELECT friend_code FROM users WHERE id = ?", (user_id,))
+            result = c.fetchone()
+            
+            if result:
+                return jsonify({
+                    "success": True,
+                    "friend_code": result[0]
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "User not found"
+                }), 404
+                
+        finally:
+            conn.close()
+            
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()
+        print(f"Error getting friend code: {e}")
+        return jsonify({"error": "Failed to get friend code"}), 500
 
 def generate_unique_code(length=8):
     while True:
@@ -1337,36 +1367,35 @@ def generate_unique_code(length=8):
 @login_required
 def update_friend_code():
     try:
+        data = request.json
         user_id = session.get('user_id')
-        new_code = request.json.get('friend_code')
+        new_code = data.get('friend_code')
         
         if not new_code:
-            return jsonify({"error": "Nickname cannot be empty"}), 400
+            return jsonify({"error": "Friend code is required"}), 400
             
-        if len(new_code) > 15:
-            return jsonify({"error": "Nickname too long (max 15 characters)"}), 400
-            
-        # Check if code contains only valid characters
-        if not all(c.isalnum() or c.isspace() for c in new_code):
-            return jsonify({"error": "Nickname can only contain letters, numbers, and spaces"}), 400
-        
         conn = sqlite3.connect('readit.db')
-        c = conn.cursor()
-        
-        # Check if code is already taken by another user
-        c.execute("SELECT id FROM users WHERE friend_code = ? AND id != ?", (new_code, user_id))
-        if c.fetchone():
-            return jsonify({"error": "This nickname is already taken"}), 400
-        
-        # Update the friend code
-        c.execute("UPDATE users SET friend_code = ? WHERE id = ?", (new_code, user_id))
-        conn.commit()
-        
-        return jsonify({"success": True})
+        try:
+            c = conn.cursor()
+            # Check if code is already taken
+            c.execute("SELECT 1 FROM users WHERE friend_code = ? AND id != ?", (new_code, user_id))
+            if c.fetchone():
+                return jsonify({"error": "Friend code already taken"}), 409
+                
+            # Update friend code
+            c.execute("UPDATE users SET friend_code = ? WHERE id = ?", (new_code, user_id))
+            conn.commit()
+            
+            return jsonify({
+                "success": True,
+                "friend_code": new_code
+            })
+        finally:
+            conn.close()
+            
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()
+        print(f"Error updating friend code: {e}")
+        return jsonify({"error": "Failed to update friend code"}), 500
 
 @app.route('/api/set-club-book', methods=['POST'])
 @login_required
@@ -1512,25 +1541,125 @@ def add_header(response):
         response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
     return response
 
-# Add this function to handle CORS and session cookies
-@app.after_request
-def after_request(response):
-    # Allow credentials
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    
-    # Set allowed origins - replace with your domain
-    if app.debug:
-        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5000')
-    else:
-        response.headers.add('Access-Control-Allow-Origin', 'https://readit.hexy.nl')
-    
-    # Allow methods
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    
-    # Allow headers
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    
-    return response
+@app.route('/api/get-club-details/<int:club_id>', methods=['GET'])
+@login_required
+def get_club_details(club_id):
+    try:
+        user_id = session.get('user_id')
+        conn = sqlite3.connect('readit.db')
+        c = conn.cursor()
+        
+        # Check if user is member or owner
+        c.execute("""
+            SELECT 1 FROM reading_clubs rc
+            LEFT JOIN club_members cm ON rc.id = cm.club_id
+            WHERE rc.id = ? AND (rc.created_by = ? OR cm.user_id = ?)
+        """, (club_id, user_id, user_id))
+        
+        if not c.fetchone():
+            return jsonify({"error": "Not authorized to view club details"}), 403
+        
+        # Get club details
+        c.execute("""
+            WITH reader_counts AS (
+                SELECT rc.id as club_id, COUNT(DISTINCT rl.user_id) as readers
+                FROM reading_clubs rc
+                LEFT JOIN reading_list rl ON rc.current_book_isbn = rl.book_isbn
+                WHERE rc.id = ?
+                GROUP BY rc.id
+            )
+            SELECT 
+                rc.id,
+                rc.name,
+                rc.join_code,
+                rc.created_by,
+                COUNT(cm2.user_id) as member_count,
+                rc.current_book_isbn,
+                b.title as book_title,
+                rc.book_set_at,
+                r.readers as readers_count
+            FROM reading_clubs rc
+            LEFT JOIN club_members cm2 ON rc.id = cm2.club_id
+            LEFT JOIN books b ON rc.current_book_isbn = b.isbn
+            LEFT JOIN reader_counts r ON rc.id = r.club_id
+            WHERE rc.id = ?
+            GROUP BY rc.id
+        """, (club_id, club_id))
+        
+        result = c.fetchone()
+        if not result:
+            return jsonify({"error": "Club not found"}), 404
+            
+        return jsonify({
+            "id": result[0],
+            "name": result[1],
+            "join_code": result[2],
+            "created_by": result[3],
+            "member_count": result[4],
+            "current_book_isbn": result[5],
+            "book_title": result[6],
+            "book_set_at": result[7],
+            "readers_count": result[8]
+        })
+        
+    except Exception as e:
+        print(f"Error in get_club_details: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/modify-club/<int:club_id>', methods=['POST'])
+@login_required
+def modify_club(club_id):
+    try:
+        user_id = session.get('user_id')
+        data = request.json
+        print("Received data:", data)  # Debug logging
+        
+        conn = sqlite3.connect('readit.db')
+        c = conn.cursor()
+        
+        # Verify user is the owner
+        c.execute("SELECT 1 FROM reading_clubs WHERE id = ? AND created_by = ?", (club_id, user_id))
+        if not c.fetchone():
+            return jsonify({"error": "Not authorized to modify this club"}), 403
+        
+        # Get the book ISBN safely
+        current_book = data.get('currentBook')
+        book_isbn = current_book.get('isbn') if current_book else None
+        
+        # Update club details
+        c.execute("""
+            UPDATE reading_clubs 
+            SET name = ?, 
+                current_book_isbn = ?,
+                book_set_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (
+            data.get('name'),
+            book_isbn,
+            club_id
+        ))
+        
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"Error modifying club: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/get-current-username', methods=['GET'])
+@login_required
+def get_current_username():
+    try:
+        username = session.get('username')
+        return jsonify({
+            "success": True,
+            "username": username
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)

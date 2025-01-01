@@ -1,6 +1,6 @@
-import { initializeNavigation, initializeApp, attachEventListeners } from '../script.js';
+import { ui } from './ui.js';
+import { initializeApp, attachEventListeners } from '../script.js';
 
-// Authentication related functions
 export const auth = {
     async checkAuthentication() {
         try {
@@ -9,15 +9,15 @@ export const auth = {
                 credentials: 'include'
             });
             const data = await response.json();
-            
             console.log('Auth check response:', data);
             
             if (data.authenticated) {
+                console.log('User is authenticated, hiding overlay');
                 document.getElementById('auth-overlay').style.display = 'none';
                 return true;
             }
             
-            // If not authenticated, ensure auth overlay is visible
+            console.log('User is not authenticated, showing overlay');
             document.getElementById('auth-overlay').style.display = 'flex';
             return false;
         } catch (error) {
@@ -27,25 +27,29 @@ export const auth = {
         }
     },
 
-    async handleLogin(event) {
-        event.preventDefault();
+    async handleLogin() {
         const username = document.getElementById('login-username').value;
         const password = document.getElementById('login-password').value;
 
         try {
             const response = await fetch('/api/login', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 credentials: 'include',
                 body: JSON.stringify({ username, password })
             });
 
             const data = await response.json();
-            if (response.ok) {
+            
+            if (response.ok && data.authenticated) {
                 document.getElementById('auth-overlay').style.display = 'none';
+                document.getElementById('login-form-element').reset();
                 return true;
             } else {
-                throw new Error(data.message);
+                throw new Error(data.error || 'Login failed');
             }
         } catch (error) {
             console.error('Login failed:', error);
@@ -55,8 +59,7 @@ export const auth = {
         }
     },
 
-    async handleRegister(event) {
-        event.preventDefault();
+    async handleRegister() {
         const username = document.getElementById('register-username').value;
         const password = document.getElementById('register-password').value;
         const confirmPassword = document.getElementById('register-confirm-password').value;
@@ -69,17 +72,22 @@ export const auth = {
         try {
             const response = await fetch('/api/register', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 credentials: 'include',
                 body: JSON.stringify({ username, password })
             });
 
             const data = await response.json();
-            if (response.ok) {
+            
+            if (response.ok && data.authenticated) {
                 document.getElementById('auth-overlay').style.display = 'none';
+                document.getElementById('register-form-element').reset();
                 return true;
             } else {
-                throw new Error(data.message);
+                throw new Error(data.error || 'Registration failed');
             }
         } catch (error) {
             console.error('Registration failed:', error);
@@ -89,129 +97,81 @@ export const auth = {
         }
     },
 
-    async handleLogout() {
-        try {
-            await fetch('/api/logout', { method: 'POST' });
-            localStorage.removeItem('userId');
-            localStorage.removeItem('username');
-            document.getElementById('auth-overlay').style.display = 'flex';
-        } catch (error) {
-            console.error('Logout failed:', error);
-        }
-    },
-
-    async updateProfile(event) {
-        event.preventDefault();
-        const username = document.getElementById('profile-username').value;
-        const password = document.getElementById('profile-password').value;
-        const confirmPassword = document.getElementById('profile-confirm-password').value;
-
-        if (password && password !== confirmPassword) {
-            ui.showError('Passwords do not match');
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/update-profile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    username: username || undefined,
-                    password: password || undefined 
-                })
-            });
-
-            const data = await response.json();
-            if (response.ok) {
-                if (username) localStorage.setItem('username', username);
-                ui.showSuccess('Profile updated successfully');
-                ui.hideModals();
-            } else {
-                throw new Error(data.message);
-            }
-        } catch (error) {
-            console.error('Profile update failed:', error);
-            ui.showError(error.message || 'Profile update failed. Please try again.');
-        }
-    },
-
     showLogin() {
+        console.log('Showing login form');
+        document.getElementById('login-form').classList.remove('hidden');
         document.getElementById('register-form').classList.add('hidden');
         document.getElementById('reset-form').classList.add('hidden');
-        document.getElementById('login-form').classList.remove('hidden');
     },
 
     showRegister() {
+        console.log('Showing register form');
         document.getElementById('login-form').classList.add('hidden');
-        document.getElementById('reset-form').classList.add('hidden');
         document.getElementById('register-form').classList.remove('hidden');
+        document.getElementById('reset-form').classList.add('hidden');
     },
 
     showPasswordReset() {
+        console.log('Showing password reset form');
         document.getElementById('login-form').classList.add('hidden');
         document.getElementById('register-form').classList.add('hidden');
         document.getElementById('reset-form').classList.remove('hidden');
     },
 
-    async handlePasswordReset(event) {
-        event.preventDefault();
-        const email = document.getElementById('reset-email').value;
-        
+    async handleLogout() {
+        console.log('Handling logout');
         try {
-            const response = await fetch('/api/reset-password', {
+            const response = await fetch('/api/logout', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
+                credentials: 'include'
             });
-
-            const data = await response.json();
+            
             if (response.ok) {
-                ui.showSuccess('Password reset instructions sent to your email');
-                ui.hideModals();
-            } else {
-                throw new Error(data.message);
+                console.log('Logout successful, showing auth overlay');
+                document.getElementById('auth-overlay').style.display = 'flex';
+                document.getElementById('login-form-element').reset();
+                document.getElementById('register-form-element').reset();
             }
         } catch (error) {
-            console.error('Password reset failed:', error);
-            ui.showError(error.message || 'Password reset failed. Please try again.');
+            console.error('Logout failed:', error);
         }
-    },
-
-    async updateUsername() {
-        const username = document.getElementById('profile-username').value;
-        if (!username) {
-            ui.showError('Username cannot be empty');
-            return;
-        }
-
-        await this.updateProfile({
-            target: {
-                querySelector: (id) => document.getElementById('profile-username')
-            },
-            preventDefault: () => {}
-        });
     },
 
     async updatePassword() {
-        const password = document.getElementById('profile-password').value;
+        const newPassword = document.getElementById('profile-password').value;
         const confirmPassword = document.getElementById('profile-confirm-password').value;
 
-        if (!password) {
-            ui.showError('Password cannot be empty');
+        if (!newPassword || !confirmPassword) {
+            ui.showError('Please fill in both password fields');
             return;
         }
 
-        if (password !== confirmPassword) {
+        if (newPassword !== confirmPassword) {
             ui.showError('Passwords do not match');
             return;
         }
 
-        await this.updateProfile({
-            target: {
-                querySelector: (id) => document.getElementById('profile-password')
-            },
-            preventDefault: () => {}
-        });
+        try {
+            const response = await fetch('/api/update-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ new_password: newPassword })
+            });
+
+            const data = await response.json();
+            
+            if (response.ok) {
+                ui.showSuccess('Password updated successfully');
+                document.getElementById('profile-password').value = '';
+                document.getElementById('profile-confirm-password').value = '';
+            } else {
+                throw new Error(data.error || 'Failed to update password');
+            }
+        } catch (error) {
+            console.error('Password update failed:', error);
+            ui.showError(error.message || 'Failed to update password');
+        }
     },
 
     async deleteAccount() {
@@ -222,20 +182,51 @@ export const auth = {
         try {
             const response = await fetch('/api/delete-account', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                credentials: 'include'
             });
 
-            const data = await response.json();
             if (response.ok) {
-                localStorage.removeItem('userId');
-                localStorage.removeItem('username');
-                window.location.reload();
+                ui.showSuccess('Account deleted successfully');
+                // Show login screen
+                document.getElementById('auth-overlay').style.display = 'flex';
+                this.showLogin();
             } else {
-                throw new Error(data.message);
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to delete account');
             }
         } catch (error) {
             console.error('Account deletion failed:', error);
-            ui.showError(error.message || 'Account deletion failed. Please try again.');
+            ui.showError(error.message || 'Failed to delete account');
+        }
+    },
+
+    async updateUsername() {
+        const newUsername = document.getElementById('profile-username').value;
+        
+        if (!newUsername) {
+            ui.showError('Please enter a new username');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/update-username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ new_username: newUsername })
+            });
+
+            const data = await response.json();
+            
+            if (response.ok) {
+                ui.showSuccess('Username updated successfully');
+                document.getElementById('profile-username').value = '';
+            } else {
+                throw new Error(data.error || 'Failed to update username');
+            }
+        } catch (error) {
+            console.error('Username update failed:', error);
+            ui.showError(error.message || 'Failed to update username');
         }
     }
 }; 

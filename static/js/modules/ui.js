@@ -1,4 +1,5 @@
 // UI related functions (toasts, modals, section display)
+
 export const ui = {
     showToast(message, type = 'info') {
         const toast = document.getElementById('toast') || this.createToastElement();
@@ -26,7 +27,9 @@ export const ui = {
 
     toggleModal(modalId, show = true) {
         const modal = document.getElementById(modalId);
-        modal.style.display = show ? 'flex' : 'none';
+        if (modal) {
+            modal.style.display = show ? 'flex' : 'none';
+        }
         
         if (show) {
             const closeBtn = modal.querySelector('.close-modal');
@@ -75,5 +78,36 @@ export const ui = {
         document.querySelectorAll('.modal').forEach(modal => {
             modal.style.display = 'none';
         });
+    },
+
+    showConfirmDialog(title, message, onConfirm) {
+        const modalHtml = `
+            <div class="modal-content">
+                <h3>${title}</h3>
+                <p>${message}</p>
+                <div class="modal-buttons">
+                    <button class="action-button secondary" id="confirm-cancel">Cancel</button>
+                    <button class="action-button" id="confirm-ok">OK</button>
+                </div>
+            </div>
+        `;
+
+        const modalElement = document.createElement('div');
+        modalElement.className = 'modal';
+        modalElement.id = 'confirm-dialog';
+        modalElement.innerHTML = modalHtml;
+        document.body.appendChild(modalElement);
+
+        const handleConfirm = async () => {
+            modalElement.remove();
+            await onConfirm();
+        };
+
+        modalElement.querySelector('#confirm-ok').addEventListener('click', handleConfirm);
+        modalElement.querySelector('#confirm-cancel').addEventListener('click', () => {
+            modalElement.remove();
+        });
+
+        modalElement.style.display = 'flex';
     }
 }; 

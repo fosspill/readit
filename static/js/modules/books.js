@@ -3,21 +3,76 @@ import { loadingMessages } from './constants.js';
 
 // Book management related functions
 export const books = {
+    currentSearchResults: [],
+
+    async loadReadingList() {
+        try {
+            const response = await fetch('/api/get-reading-list', {
+                credentials: 'include'
+            });
+            const data = await response.json();
+            console.log('Reading list response:', data);
+            
+            // Update reading list display if container exists
+            const container = document.getElementById('reading-list');
+            if (container) {
+                if (!Array.isArray(data) || data.length === 0) {
+                    container.innerHTML = '<p class="no-books">Your reading list is empty</p>';
+                } else {
+                    container.innerHTML = data.map(book => `
+                        <div class="book-item">
+                            <h4>${book.title}</h4>
+                            <p class="book-author">by ${book.author}</p>
+                            <div class="book-actions">
+                                <button onclick="books.setGoal('${book.isbn}')" class="action-button small">Set Goal</button>
+                                <button onclick="books.markRead('${book.isbn}')" class="action-button small secondary">Mark Read</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            }
+            
+            // Always update book select options if it exists
+            const bookSelect = document.getElementById('book-select');
+            if (bookSelect) {
+                // Clear existing options except the default one
+                while (bookSelect.options.length > 1) {
+                    bookSelect.remove(1);
+                }
+                
+                // Add books from reading list
+                if (Array.isArray(data)) {
+                    data.forEach(book => {
+                        const option = document.createElement('option');
+                        option.value = book.isbn;
+                        option.textContent = `${book.title} by ${book.author}`;
+                        bookSelect.appendChild(option);
+                    });
+                }
+            }
+            
+        } catch (error) {
+            console.error('Failed to load reading list:', error);
+            ui.showError('Failed to load reading list');
+        }
+    },
+
     async searchBooks(query) {
         try {
-            // Show loading state with random message
-            const loadingMessage = loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
+            const searchButton = document.getElementById('search-button');
+            const originalText = searchButton.dataset.originalText;
+            searchButton.textContent = '...';
+            searchButton.disabled = true;
+            
+            // Show loading state with spinner
             const resultsContainer = document.getElementById('search-results');
+            const randomQuote = loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
             resultsContainer.innerHTML = `
                 <div class="search-loading">
                     <div class="loading-spinner"></div>
-                    <p class="loading-message">${loadingMessage}</p>
+                    <p class="loading-message">${randomQuote}</p>
                 </div>
             `;
-            
-            // Hide search button during search
-            const searchButton = document.getElementById('search-button');
-            searchButton.style.display = 'none';
             
             const response = await fetch('/api/search-books', {
                 method: 'POST',
@@ -27,165 +82,124 @@ export const books = {
             });
             
             const data = await response.json();
-            console.log('Search response:', data);
+            this.currentSearchResults = data;
             
-            this.currentSearchResults = Array.isArray(data) ? data : []; // Store the results
-            resultsContainer.innerHTML = this.currentSearchResults.length ? '' : '<p>No books found</p>';
+            // Reset button state
+            searchButton.textContent = originalText;
+            searchButton.disabled = false;
             
-            this.currentSearchResults.forEach(book => {
-                const bookElement = this.createBookElement(book);
-                resultsContainer.appendChild(bookElement);
-            });
+            if (!Array.isArray(data) || data.length === 0) {
+                resultsContainer.innerHTML = '<p class="no-results">No books found</p>';
+                return;
+            }
+            
+            resultsContainer.innerHTML = data.map(book => `
+                <div class="book-result">
+                    <h4>${book.title}</h4>
+                    <p class="book-author">by ${book.author}</p>
+                    <button onclick="books.addToReadingList('${book.isbn}')" class="action-button small">Add to List</button>
+                </div>
+            `).join('');
+            
         } catch (error) {
-            console.error('Book search failed:', error);
-            ui.showError('Failed to search books');
-        } finally {
-            // Show search button again after search completes
+            console.error('Search failed:', error);
+            ui.showError('Book search failed');
+            // Reset button state on error
             const searchButton = document.getElementById('search-button');
-            searchButton.style.display = 'block';
+            searchButton.textContent = searchButton.dataset.originalText;
+            searchButton.disabled = false;
         }
     },
 
-    createBookElement(book) {
-        const div = document.createElement('div');
-        div.className = 'book-result';
-        div.innerHTML = `
-            <div class="book-info">
-                <h3>${book.title}</h3>
-                <p class="author">by ${book.author}</p>
-                ${book.description ? `<p class="description">${book.description}</p>` : ''}
-            </div>
-            <div class="book-actions">
-                <button onclick="books.addToReadingList('${book.isbn}')" class="action-button small">
-                    Add to Reading List
-                </button>
-            </div>
-        `;
-        return div;
-    },
-
-    async addToReadingList(isbn) {
-        if (!isbn) {
-            ui.showError('Invalid book selection');
-            return;
-        }
-
+    async addToReadingList(isbn, title, author) {
         try {
-            const book = this.currentSearchResults.find(b => b.isbn === isbn);
+            let book;
+            if (title && author) {
+                book = { isbn, title, author };
+            } else {
+                book = this.currentSearchResults.find(b => b.isbn === isbn);
+                if (!book) {
+                    throw new Error('Book not found in search results');
+                }
+            }
+            
             const response = await fetch('/api/add-to-reading-list', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     book_isbn: isbn,
-                    book_title: book?.title,
-                    book_author: book?.author
+                    book_title: book.title,
+                    book_author: book.author
                 })
             });
-
-            const data = await response.json();
+            
             if (response.ok) {
-                // Clear search results and input
-                document.getElementById('search-results').innerHTML = '';
-                document.getElementById('book-search').value = '';
-                document.getElementById('search-button').style.display = 'block';
+                // Clear search results and search input if they exist
+                const searchResults = document.getElementById('search-results');
+                const searchInput = document.getElementById('book-search');
+                if (searchResults) searchResults.innerHTML = '';
+                if (searchInput) searchInput.value = '';
                 
+                // Update book select options in the goal form
+                const bookSelect = document.getElementById('book-select');
+                if (bookSelect) {
+                    const option = document.createElement('option');
+                    option.value = isbn;
+                    option.textContent = `${book.title} by ${book.author}`;
+                    bookSelect.appendChild(option);
+                }
+                
+                // Show success message and refresh reading list
                 ui.showSuccess('Book added to reading list');
+                await this.loadReadingList();
                 
-                // Update the book select and set it to the newly added book
-                await this.updateReadingListSelect(isbn);
+                // Reset search button if it exists
+                const searchButton = document.getElementById('search-button');
+                if (searchButton) {
+                    searchButton.textContent = searchButton.dataset.originalText;
+                    searchButton.disabled = false;
+                }
             } else {
-                throw new Error(data.message || 'Failed to add book');
+                const data = await response.json();
+                throw new Error(data.message || 'Failed to add book to reading list');
             }
         } catch (error) {
             console.error('Failed to add book:', error);
-            ui.showError(error.message || 'Failed to add book to reading list');
+            ui.showError(error.message);
         }
     },
 
-    async updateReadingListSelect(selectedIsbn = null) {
-        try {
-            const response = await fetch('/api/get-reading-list', {
-                credentials: 'include'
-            });
-            const data = await response.json();
-            console.log('Books response:', data);
-            
-            const books = Array.isArray(data) ? data : [];
-            const select = document.getElementById('book-select');
-            select.innerHTML = '<option value="">Select a book</option>';
-            
-            books.forEach(book => {
-                const option = document.createElement('option');
-                option.value = book.isbn;
-                option.textContent = `${book.title} by ${book.author}`;
-                select.appendChild(option);
-            });
-
-            // If a selectedIsbn is provided, set it as the selected option
-            if (selectedIsbn) {
-                select.value = selectedIsbn;
-            }
-        } catch (error) {
-            console.error('Failed to update book list:', error);
-            ui.showError('Failed to load reading list');
-        }
+    async setGoal(isbn) {
+        const book = this.currentSearchResults.find(b => b.isbn === isbn);
+        if (!book) return;
+        
+        // Show goal creation modal
+        const modal = document.getElementById('create-goal-modal');
+        const form = modal.querySelector('form');
+        form.dataset.bookIsbn = isbn;
+        form.querySelector('.book-title').textContent = book.title;
+        ui.toggleModal('create-goal-modal', true);
     },
 
-    async getBookDetails(bookId) {
+    async markRead(isbn) {
         try {
-            const response = await fetch(`/api/books/${bookId}`, {
-                credentials: 'include'
-            });
-            return await response.json();
-        } catch (error) {
-            console.error('Failed to get book details:', error);
-            ui.showError('Failed to load book details');
-            return null;
-        }
-    },
-
-    // Add this property to store search results
-    currentSearchResults: [],
-
-    // Add this new method to handle goal creation
-    async createGoal(event) {
-        event.preventDefault();
-        
-        const form = document.getElementById('set-goal-form');
-        const bookSelect = document.getElementById('book-select');
-        const goalQuantity = document.getElementById('goal-quantity');
-        const goalType = document.getElementById('goal-type');
-        
-        // Debug log to see what we're sending
-        const goalData = {
-            book_isbn: bookSelect.value,
-            goal_quantity: parseInt(goalQuantity.value),
-            goal_type: goalType.value
-        };
-        console.log('Creating goal with data:', goalData);
-        
-        try {
-            const response = await fetch('/api/set-reading-goal', {
+            const response = await fetch('/api/mark-book-read', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify(goalData)
+                body: JSON.stringify({ book_isbn: isbn })
             });
             
-            const data = await response.json();
-            console.log('Goal creation response:', data); // Debug log for response
-            
             if (response.ok) {
-                ui.showSuccess('Reading goal created successfully! 📚');
-                form.reset();
-                document.querySelector('a[href="#today-goals"]').click();
+                ui.showSuccess('Book marked as read');
+                await this.loadReadingList();
             } else {
-                throw new Error(data.error || 'Failed to create goal');
+                throw new Error('Failed to mark book as read');
             }
         } catch (error) {
-            console.error('Failed to create goal:', error);
-            ui.showError(error.message || 'Failed to create reading goal');
+            console.error('Failed to mark book as read:', error);
+            ui.showError(error.message);
         }
     }
 }; 
