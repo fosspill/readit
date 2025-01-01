@@ -1,4 +1,5 @@
 import { ui } from './ui.js';
+import { streakQuotes } from './constants.js';
 
 // Reading goals related functions
 export const goals = {
@@ -18,6 +19,12 @@ export const goals = {
             const streakElement = document.getElementById('streak-count');
             if (streakElement) {
                 streakElement.textContent = data.streak || 0;
+            }
+            
+            const streakQuoteElement = document.getElementById('streak-quote');
+            if (streakQuoteElement) {
+                const randomQuote = streakQuotes[Math.floor(Math.random() * streakQuotes.length)];
+                streakQuoteElement.textContent = randomQuote;
             }
             
             const goalsContainer = document.getElementById('today-goals-list');
