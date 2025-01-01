@@ -142,6 +142,12 @@ export async function initializeApp() {
             social.loadSocialSection(),
             profile.loadProfile()
         ]);
+
+        // Check if we should show the help overlay
+        if (sessionStorage.getItem('showHelp')) {
+            sessionStorage.removeItem('showHelp');
+            goals.showHelpOverlay();
+        }
     } catch (error) {
         console.error('Error initializing app:', error);
     }

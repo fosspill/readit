@@ -84,6 +84,7 @@ export const auth = {
             if (response.ok && data.authenticated) {
                 document.getElementById('auth-overlay').style.display = 'none';
                 document.getElementById('register-form-element').reset();
+                sessionStorage.setItem('showHelp', 'true');
                 return true;
             } else {
                 throw new Error(data.error || 'Registration failed');

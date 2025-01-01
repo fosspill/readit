@@ -48,7 +48,11 @@ export const goals = {
                             <div class="progress-bar-overlay"></div>
                         </div>
                         <div class="progress-controls">
-                            <span class="progress-count">${progress} / ${goal.goal_quantity}</span>
+                            <span class="progress-count">
+                                <span class="progress-number" data-goal-id="${goal.id}" data-goal-quantity="${goal.goal_quantity}">${progress}</span>
+                                <span class="progress-separator"> / </span>
+                                <span class="progress-total">${goal.goal_quantity}</span>
+                            </span>
                             <button onclick="goals.updateProgress(${goal.id}, false)" class="progress-button">-</button>
                             <button onclick="goals.updateProgress(${goal.id}, true)" class="progress-button">+</button>
                             <button onclick="goals.completeGoal(${goal.id})" class="complete-button ${goal.completed ? 'completed' : ''}">
@@ -209,6 +213,54 @@ export const goals = {
     },
 
     initializeProgressBars() {
+        document.querySelectorAll('.progress-number').forEach(numberElement => {
+            numberElement.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent progress bar click
+                const goalId = parseInt(numberElement.dataset.goalId);
+                const goalQuantity = parseInt(numberElement.dataset.goalQuantity);
+                const currentProgress = parseInt(numberElement.textContent);
+                
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.value = currentProgress;
+                input.min = 0;
+                input.max = goalQuantity;
+                input.className = 'progress-number-input';
+                
+                const handleUpdate = () => {
+                    const newValue = Math.min(Math.max(parseInt(input.value) || 0, 0), goalQuantity);
+                    this.updateVisualProgress(goalId, newValue);
+                    this.pendingUpdates.set(goalId, newValue);
+                    
+                    if (this.updateTimeout) {
+                        clearTimeout(this.updateTimeout);
+                    }
+                    
+                    this.updateTimeout = setTimeout(() => {
+                        this.pendingUpdates.forEach((progress, id) => {
+                            this.updateProgress(id, progress, true);
+                        });
+                        this.pendingUpdates.clear();
+                    }, 500);
+                };
+                
+                input.addEventListener('blur', handleUpdate);
+                input.addEventListener('keyup', (e) => {
+                    if (e.key === 'Enter') {
+                        handleUpdate();
+                        input.blur();
+                    } else if (e.key === 'Escape') {
+                        input.value = currentProgress;
+                        input.blur();
+                    }
+                });
+                
+                numberElement.textContent = '';
+                numberElement.appendChild(input);
+                input.select();
+            });
+        });
+
         document.querySelectorAll('.progress-bar-container').forEach(container => {
             let isDragging = false;
 
@@ -353,5 +405,89 @@ export const goals = {
         progressElement.textContent = '';
         progressElement.appendChild(input);
         input.select();
+    },
+
+    showHelpOverlay() {
+        const overlay = document.createElement('div');
+        overlay.className = 'help-overlay';
+        overlay.innerHTML = `
+            <div class="help-content">
+                <h2>📚 Welcome to ReadIt!</h2>
+                
+                <div class="help-section">
+                    <h3>How to Get Started</h3>
+                    <div class="help-step">
+                        <div class="step-icon">📖</div>
+                        <div class="step-content">
+                            <h4>1. Add Books</h4>
+                            <p>Search for books, join reading clubs, or follow friends' recommendations</p>
+                        </div>
+                    </div>
+                    <div class="help-step">
+                        <div class="step-icon">🎯</div>
+                        <div class="step-content">
+                            <h4>2. Set Goals</h4>
+                            <p>Choose your daily reading target in pages, minutes, or chapters</p>
+                        </div>
+                    </div>
+                    <div class="help-step">
+                        <div class="step-icon">✨</div>
+                        <div class="step-content">
+                            <h4>3. Track Progress</h4>
+                            <p>Keep reading daily and watch your streak grow!</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3>Updating Your Progress</h3>
+                    <div class="help-tips">
+                        <div class="tip">
+                            <div class="tip-icon">👆</div>
+                            <div class="tip-content">
+                                <h4>Quick Changes</h4>
+                                <p>Use + and - buttons to adjust by one</p>
+                            </div>
+                        </div>
+                        <div class="tip">
+                            <div class="tip-icon">✋</div>
+                            <div class="tip-content">
+                                <h4>Drag to Adjust</h4>
+                                <p>Slide the progress bar for bigger changes</p>
+                            </div>
+                        </div>
+                        <div class="tip">
+                            <div class="tip-icon">🔢</div>
+                            <div class="tip-content">
+                                <h4>Direct Input</h4>
+                                <p>Tap the number to type exact progress</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="help-done">Got it!</button>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        // Add fade-in class after a brief delay (for animation)
+        setTimeout(() => overlay.classList.add('fade-in'), 10);
+
+        // Close button functionality
+        const closeButton = overlay.querySelector('.help-done');
+        closeButton.addEventListener('click', () => {
+            overlay.classList.add('fade-out');
+            setTimeout(() => overlay.remove(), 300);
+        });
+
+        // Close on click outside content
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.classList.add('fade-out');
+                setTimeout(() => overlay.remove(), 300);
+            }
+        });
     }
 }; 
