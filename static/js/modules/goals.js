@@ -3,6 +3,8 @@ import { ui } from './ui.js';
 // Reading goals related functions
 export const goals = {
     currentGoals: [],
+    updateTimeout: null,
+    pendingUpdates: new Map(),
 
     async loadTodayGoals() {
         try {
@@ -41,8 +43,9 @@ export const goals = {
                         <p class="goal-target">Daily Goal: ${goal.goal_quantity} ${goal.goal_type}</p>
                     </div>
                     <div class="goal-progress">
-                        <div class="progress-bar-container">
+                        <div class="progress-bar-container" data-goal-id="${goal.id}" data-goal-quantity="${goal.goal_quantity}">
                             <div class="progress-bar" style="width: ${progressPercentage}%"></div>
+                            <div class="progress-bar-overlay"></div>
                         </div>
                         <div class="progress-controls">
                             <span class="progress-count">${progress} / ${goal.goal_quantity}</span>
@@ -56,6 +59,8 @@ export const goals = {
                 `;
                 goalsContainer.appendChild(goalElement);
             });
+            
+            this.initializeProgressBars();
             
         } catch (error) {
             console.error('Failed to load today\'s goals:', error);
@@ -126,25 +131,32 @@ export const goals = {
         const form = event.target;
         
         try {
-            const response = await fetch('/api/goals', {
+            const response = await fetch('/api/set-reading-goal', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({
-                    bookId: form.querySelector('#book-select').value,
-                    targetPages: form.querySelector('#target-pages').value,
-                    deadline: form.querySelector('#deadline').value
+                    book_isbn: form.querySelector('#book-select').value,
+                    goal_quantity: form.querySelector('#goal-quantity').value,
+                    goal_type: form.querySelector('#goal-type').value
                 })
             });
 
-            if (!response.ok) throw new Error('Failed to create goal');
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to create goal');
+            }
 
-            ui.clearForm('create-goal-form');
-            ui.toggleModal('create-goal-modal', false);
-            await this.loadTodaysGoals();
+            await this.loadTodayGoals();
             ui.showSuccess('Goal created successfully');
+            form.reset();
+            
+            // Use ui.showSection to properly switch sections
+            ui.showSection('today-goals');
+            
         } catch (error) {
             console.error('Failed to create goal:', error);
-            ui.showError('Failed to create goal');
+            ui.showError(error.message || 'Failed to create goal');
         }
     },
 
@@ -179,5 +191,167 @@ export const goals = {
             console.error('Failed to complete goal:', error);
             ui.showError(error.message || 'Failed to complete goal');
         }
+    },
+
+    updateVisualProgress(goalId, newProgress) {
+        const container = document.querySelector(`[data-goal-id="${goalId}"]`);
+        if (!container) return;
+        
+        const goal = this.currentGoals.find(g => g.id === goalId);
+        if (!goal) return;
+
+        const progressBar = container.querySelector('.progress-bar');
+        const progressCount = container.closest('.goal-progress').querySelector('.progress-count');
+        const percentage = Math.min((newProgress / goal.goal_quantity) * 100, 100);
+        
+        progressBar.style.width = `${percentage}%`;
+        progressCount.textContent = `${newProgress} / ${goal.goal_quantity}`;
+    },
+
+    initializeProgressBars() {
+        document.querySelectorAll('.progress-bar-container').forEach(container => {
+            let isDragging = false;
+
+            // Handle click events (keep existing code)
+            container.addEventListener('click', (e) => {
+                if (isDragging) return; // Prevent click when dragging ends
+                
+                const rect = container.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const percentage = Math.min(Math.max(x / rect.width, 0), 1);
+                const goalId = parseInt(container.dataset.goalId);
+                const goalQuantity = parseInt(container.dataset.goalQuantity);
+                const newProgress = Math.round(percentage * goalQuantity);
+
+                // Update visual immediately
+                this.updateVisualProgress(goalId, newProgress);
+
+                // Clear any pending timeout
+                if (this.updateTimeout) {
+                    clearTimeout(this.updateTimeout);
+                }
+
+                // Store the pending update
+                this.pendingUpdates.set(goalId, newProgress);
+
+                // Debounce the API call
+                this.updateTimeout = setTimeout(() => {
+                    this.pendingUpdates.forEach((progress, id) => {
+                        this.updateProgress(id, progress, true);
+                    });
+                    this.pendingUpdates.clear();
+                }, 500);
+            });
+
+            // Mouse drag events
+            container.addEventListener('mousedown', () => {
+                isDragging = true;
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                
+                e.preventDefault();
+                const rect = container.getBoundingClientRect();
+                const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
+                const percentage = x / rect.width;
+                const goalId = parseInt(container.dataset.goalId);
+                const goalQuantity = parseInt(container.dataset.goalQuantity);
+                const newProgress = Math.round(percentage * goalQuantity);
+
+                this.updateVisualProgress(goalId, newProgress);
+                this.pendingUpdates.set(goalId, newProgress);
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (!isDragging) return;
+                isDragging = false;
+
+                // Send update after drag ends
+                if (this.updateTimeout) {
+                    clearTimeout(this.updateTimeout);
+                }
+
+                this.updateTimeout = setTimeout(() => {
+                    this.pendingUpdates.forEach((progress, id) => {
+                        this.updateProgress(id, progress, true);
+                    });
+                    this.pendingUpdates.clear();
+                }, 500);
+            });
+
+            // Touch events
+            container.addEventListener('touchstart', (e) => {
+                isDragging = true;
+                e.preventDefault(); // Prevent scrolling while dragging
+            });
+
+            container.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = container.getBoundingClientRect();
+                const x = Math.min(Math.max(touch.clientX - rect.left, 0), rect.width);
+                const percentage = x / rect.width;
+                const goalId = parseInt(container.dataset.goalId);
+                const goalQuantity = parseInt(container.dataset.goalQuantity);
+                const newProgress = Math.round(percentage * goalQuantity);
+
+                this.updateVisualProgress(goalId, newProgress);
+                this.pendingUpdates.set(goalId, newProgress);
+            });
+
+            container.addEventListener('touchend', () => {
+                if (!isDragging) return;
+                isDragging = false;
+
+                // Send update after touch ends
+                if (this.updateTimeout) {
+                    clearTimeout(this.updateTimeout);
+                }
+
+                this.updateTimeout = setTimeout(() => {
+                    this.pendingUpdates.forEach((progress, id) => {
+                        this.updateProgress(id, progress, true);
+                    });
+                    this.pendingUpdates.clear();
+                }, 500);
+            });
+        });
+    },
+
+    showQuickEdit(goalId, currentProgress, goalQuantity) {
+        const progressElement = document.querySelector(`[data-goal-id="${goalId}"]`)
+            .closest('.goal-progress')
+            .querySelector('.progress-number');
+        
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.value = currentProgress;
+        input.min = 0;
+        input.max = goalQuantity;
+        input.className = 'quick-edit-input';
+        
+        const saveEdit = () => {
+            const newValue = parseInt(input.value);
+            if (!isNaN(newValue) && newValue >= 0 && newValue <= goalQuantity) {
+                this.updateProgress(goalId, newValue, true);
+            }
+            progressElement.textContent = currentProgress;
+        };
+
+        input.addEventListener('blur', saveEdit);
+        input.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') {
+                saveEdit();
+            } else if (e.key === 'Escape') {
+                progressElement.textContent = currentProgress;
+            }
+        });
+
+        progressElement.textContent = '';
+        progressElement.appendChild(input);
+        input.select();
     }
 }; 

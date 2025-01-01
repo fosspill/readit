@@ -4,25 +4,24 @@ import { initializeApp, attachEventListeners } from '../script.js';
 export const auth = {
     async checkAuthentication() {
         try {
-            console.log('Checking authentication status...');
             const response = await fetch('/api/check-auth', {
                 credentials: 'include'
             });
             const data = await response.json();
-            console.log('Auth check response:', data);
             
             if (data.authenticated) {
-                console.log('User is authenticated, hiding overlay');
                 document.getElementById('auth-overlay').style.display = 'none';
+                document.getElementById('landing-page').style.display = 'none';
+                document.querySelector('.app-container').style.display = 'block';
                 return true;
             }
             
-            console.log('User is not authenticated, showing overlay');
-            document.getElementById('auth-overlay').style.display = 'flex';
+            document.getElementById('auth-overlay').style.display = 'none';
+            document.getElementById('landing-page').style.display = 'block';
+            document.querySelector('.app-container').style.display = 'none';
             return false;
         } catch (error) {
             console.error('Auth check failed:', error);
-            document.getElementById('auth-overlay').style.display = 'flex';
             return false;
         }
     },
@@ -99,23 +98,43 @@ export const auth = {
 
     showLogin() {
         console.log('Showing login form');
+        document.getElementById('auth-overlay').style.display = 'flex';
         document.getElementById('login-form').classList.remove('hidden');
         document.getElementById('register-form').classList.add('hidden');
         document.getElementById('reset-form').classList.add('hidden');
+        this.setupModalClose();
     },
 
     showRegister() {
         console.log('Showing register form');
+        document.getElementById('auth-overlay').style.display = 'flex';
         document.getElementById('login-form').classList.add('hidden');
         document.getElementById('register-form').classList.remove('hidden');
         document.getElementById('reset-form').classList.add('hidden');
+        this.setupModalClose();
     },
 
     showPasswordReset() {
         console.log('Showing password reset form');
+        document.getElementById('auth-overlay').style.display = 'flex';
         document.getElementById('login-form').classList.add('hidden');
         document.getElementById('register-form').classList.add('hidden');
         document.getElementById('reset-form').classList.remove('hidden');
+        this.setupModalClose();
+    },
+
+    setupModalClose() {
+        const overlay = document.getElementById('auth-overlay');
+        const container = document.querySelector('.auth-container');
+
+        const handleClick = (event) => {
+            if (event.target === overlay) {
+                overlay.style.display = 'none';
+                overlay.removeEventListener('click', handleClick);
+            }
+        };
+
+        overlay.addEventListener('click', handleClick);
     },
 
     async handleLogout() {

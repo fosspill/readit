@@ -135,7 +135,8 @@ export const books = {
             });
             
             if (response.ok) {
-                // Clear search results and search input if they exist
+                // Clear search state
+                this.currentSearchResults = [];
                 const searchResults = document.getElementById('search-results');
                 const searchInput = document.getElementById('book-search');
                 if (searchResults) searchResults.innerHTML = '';
@@ -144,15 +145,20 @@ export const books = {
                 // Update book select options in the goal form
                 const bookSelect = document.getElementById('book-select');
                 if (bookSelect) {
-                    const option = document.createElement('option');
-                    option.value = isbn;
-                    option.textContent = `${book.title} by ${book.author}`;
-                    bookSelect.appendChild(option);
+                    // First ensure the option doesn't already exist
+                    const existingOption = Array.from(bookSelect.options).find(opt => opt.value === isbn);
+                    if (!existingOption) {
+                        const option = document.createElement('option');
+                        option.value = isbn;
+                        option.textContent = `${book.title} by ${book.author}`;
+                        bookSelect.appendChild(option);
+                    }
                 }
                 
                 // Show success message and refresh reading list
                 ui.showSuccess('Book added to reading list');
                 await this.loadReadingList();
+                bookSelect.value = isbn;
                 
                 // Reset search button if it exists
                 const searchButton = document.getElementById('search-button');

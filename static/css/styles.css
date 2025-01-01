@@ -256,17 +256,55 @@ h1 {
 
 .progress-bar-container {
     width: 100%;
-    height: 4px;
+    height: 8px;
     background: #DEC5A7;
-    border-radius: 2px;
+    border-radius: 4px;
     overflow: hidden;
+    position: relative;
+    cursor: pointer;
 }
 
 .progress-bar {
     height: 100%;
     background: #722F37;
-    border-radius: 2px;
     transition: width 0.3s ease;
+}
+
+.progress-bar-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    cursor: pointer;
+}
+
+.progress-count {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.edit-progress {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    cursor: pointer;
+    color: #722F37;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.edit-progress:hover {
+    opacity: 1;
+}
+
+.quick-edit-input {
+    width: 50px;
+    text-align: center;
+    padding: 2px 4px;
+    border: 1px solid #DEC5A7;
+    border-radius: 4px;
 }
 
 .progress-controls {
@@ -1059,6 +1097,24 @@ button:hover {
     gap: 1.5rem;
 }
 
+.profile-footer {
+    margin-top: 2rem;
+    padding: 1rem 0;
+    text-align: center;
+    border-top: 1px solid var(--border-color);
+}
+
+.profile-footer .privacy-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.2s;
+}
+
+.profile-footer .privacy-link:hover {
+    color: var(--text-color);
+}
+
 .form-group {
     display: flex;
     flex-direction: column;
@@ -1622,4 +1678,233 @@ button:hover {
     color: #2C1810;
     font-size: 1.4rem;
     margin: 0;
+}
+
+.landing-page {
+    min-height: 100vh;
+    background: linear-gradient(160deg, #F5E6D3 0%, #fff 100%);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 2;
+}
+
+.landing-header {
+    background: #722F37;
+    padding: 3rem 1.5rem;
+    text-align: center;
+}
+
+.landing-header .tagline {
+    color: #F5E6D3;
+    font-size: 1.4rem;
+    margin: 1rem 0 2rem;
+    opacity: 0.9;
+}
+
+.landing-header .cta-container {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin: 2rem auto;
+    max-width: 500px;
+    padding: 0 1rem;
+}
+
+
+.landing-header .cta-button {
+    flex: 1;
+    max-width: 200px;
+    padding: 1rem 2rem;
+    font-size: 1.2rem;
+    white-space: nowrap;
+}
+
+.landing-header .cta-button.login {
+    background: transparent;
+    border: 2px solid #F5E6D3;
+    color: #F5E6D3;
+}
+
+.landing-header .cta-button.register {
+    background: #F5E6D3;
+    color: #722F37;
+}
+
+.landing-header .cta-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+@media (max-width: 480px) {
+    .landing-header .cta-container {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .landing-header .cta-button {
+        max-width: 100%;
+        width: 100%;
+    }
+}
+
+.tagline {
+    color: #F5E6D3;
+    font-size: 1.2rem;
+    margin-top: 0.5rem;
+    opacity: 0.9;
+}
+
+.landing-content {
+    flex: 1;
+    padding: 2rem 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 2rem;
+    margin: 2rem 0;
+}
+
+.feature-card {
+    background: #fff;
+    padding: 2rem;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease;
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+}
+
+.feature-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    display: block;
+}
+
+.feature-card h3 {
+    color: #722F37;
+    margin-bottom: 0.5rem;
+}
+
+.feature-card p {
+    color: #666;
+    line-height: 1.4;
+}
+
+.cta-container {
+    text-align: center;
+    margin: 3rem 0;
+}
+
+.cta-button {
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    border: none;
+    margin: 0 0.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Crimson Text', serif;
+}
+
+.cta-button.login {
+    background: transparent;
+    border: 2px solid #722F37;
+    color: #722F37;
+}
+
+.cta-button.register {
+    background: #722F37;
+    color: #F5E6D3;
+}
+
+.cta-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.landing-footer {
+    text-align: center;
+    padding: 2rem;
+    margin-top: auto;
+}
+
+.privacy-link {
+    color: #722F37;
+    text-decoration: none;
+    font-size: 0.9rem;
+    opacity: 0.8;
+    transition: opacity 0.3s ease;
+}
+
+.privacy-link:hover {
+    opacity: 1;
+    text-decoration: underline;
+}
+
+.privacy-policy {
+    max-width: 800px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    font-family: 'Crimson Text', serif;
+    line-height: 1.6;
+}
+
+.privacy-policy section {
+    margin-bottom: 2rem;
+}
+
+.privacy-policy h1 {
+    color: #722F37;
+    text-align: center;
+    margin-bottom: 2rem;
+    font-size: 2.5rem;
+}
+
+.privacy-policy h2 {
+    color: #2C1810;
+    margin: 1.5rem 0 1rem;
+    font-size: 1.8rem;
+}
+
+.privacy-policy p {
+    margin-bottom: 1rem;
+    color: #444;
+    font-size: 1.1rem;
+}
+
+.privacy-policy ul {
+    margin: 1rem 0;
+    padding-left: 2rem;
+}
+
+.privacy-policy li {
+    margin-bottom: 0.8rem;
+    color: #444;
+    font-size: 1.1rem;
+}
+
+.privacy-policy ul ul {
+    margin: 0.5rem 0;
+}
+
+.privacy-policy .back-link {
+    text-align: center;
+    margin-top: 3rem;
+}
+
+.privacy-policy .back-link .cta-button {
+    display: inline-block;
+    text-decoration: none;
 }

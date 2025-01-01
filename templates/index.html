@@ -115,7 +115,7 @@
                     </div>
                 </form>
                 <div id="search-results" class="results-container"></div>
-                <form id="set-goal-form" class="goal-form" onsubmit="books.createGoal(event)">
+                <form id="set-goal-form" class="goal-form" onsubmit="event.preventDefault(); goals.createGoal(event)">
                     <div class="form-group">
                         <label for="book-select">Book</label>
                         <select id="book-select" required>
@@ -215,9 +215,6 @@
                             <button type="button" onclick="auth.deleteAccount()" class="action-button danger">Delete Account</button>
                         </div>
                     </form>
-                    <div class="privacy-link">
-                        <a href="/static/docs/privacypolicy.html" target="_blank">Privacy Policy</a>
-                    </div>
                 </div>
 
                 <div class="profile-section">
@@ -233,6 +230,10 @@
                         <!-- Books will be populated here -->
                     </div>
                 </div>
+
+                <footer class="profile-footer">
+                    <a href="/static/docs/privacypolicy.html" class="privacy-link" target="_blank">Privacy Policy</a>
+                </footer>
             </div>
         </main>
 
@@ -334,6 +335,46 @@
                 <span class="nav-text">Profile</span>
             </a>
         </nav>
+    </div>
+
+    <div id="landing-page" class="landing-page">
+        <header class="landing-header">
+            <h1>ReadIt</h1>
+            <p class="tagline">Track, Share, and Achieve Your Reading Goals</p>
+            <div class="cta-container">
+                <button onclick="auth.showLogin()" class="cta-button login">Login</button>
+                <button onclick="auth.showRegister()" class="cta-button register">Get Started</button>
+            </div>
+        </header>
+        
+        <main class="landing-content">
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <span class="feature-icon">📚</span>
+                    <h3>Track Your Reading</h3>
+                    <p>Set personal reading goals and track your daily progress</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">🏆</span>
+                    <h3>Build Streaks</h3>
+                    <p>Maintain your reading streak and build lasting habits</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">👥</span>
+                    <h3>Join Reading Clubs</h3>
+                    <p>Connect with friends and share your reading journey</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">🔒</span>
+                    <h3>Privacy First</h3>
+                    <p>Privacy respecting, hosted in Europe</p>
+                </div>
+            </div>
+
+            <footer class="landing-footer">
+                <a href="/static/docs/privacypolicy.html" class="privacy-link">Privacy Policy</a>
+            </footer>
+        </main>
     </div>
 
     <script type="module" src="{{ url_for('static', filename='js/script.js') }}"></script>
