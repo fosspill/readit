@@ -53,11 +53,13 @@ export const goals = {
                                 <span class="progress-separator"> / </span>
                                 <span class="progress-total">${goal.goal_quantity}</span>
                             </span>
-                            <button onclick="goals.updateProgress(${goal.id}, false)" class="progress-button">-</button>
-                            <button onclick="goals.updateProgress(${goal.id}, true)" class="progress-button">+</button>
-                            <button onclick="goals.completeGoal(${goal.id})" class="complete-button ${goal.completed ? 'completed' : ''}">
-                                <span class="checkmark">✓</span>
-                            </button>
+                            <div class="button-group">
+                                <button onclick="goals.updateProgress(${goal.id}, false)" class="progress-button">-</button>
+                                <button onclick="goals.updateProgress(${goal.id}, true)" class="progress-button">+</button>
+                                <button onclick="goals.completeGoal(${goal.id})" class="complete-button ${goal.completed ? 'completed' : ''}">
+                                    <span class="checkmark">✓</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -205,11 +207,11 @@ export const goals = {
         if (!goal) return;
 
         const progressBar = container.querySelector('.progress-bar');
-        const progressCount = container.closest('.goal-progress').querySelector('.progress-count');
+        const progressNumber = container.closest('.goal-progress').querySelector('.progress-number');
         const percentage = Math.min((newProgress / goal.goal_quantity) * 100, 100);
         
         progressBar.style.width = `${percentage}%`;
-        progressCount.textContent = `${newProgress} / ${goal.goal_quantity}`;
+        progressNumber.textContent = newProgress;
     },
 
     initializeProgressBars() {
